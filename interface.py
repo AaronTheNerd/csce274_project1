@@ -4,6 +4,21 @@ import threading
 import time
 
 class iRobot(object):
+	START = chr(128)
+	READ_SENSORS = chr(148)
+	WHEEL_DROP_AND_BUMPERS = chr(7) # 1 byte
+	BUTTONS = chr(18) # 1 byte
+	DISTANCE = chr(19) # 2 bytes
+	ANGLE = chr(20) # 2 bytes
+	BATTERY_CAPACITY = chr(26) # 2 bytes
+	OI_MODE = chr(35) # 1 byte
+	PACKETS = {iRobot.WHEEL_DROP_AND_BUMPERS : 1,
+			   iRobot.BUTTONS : 1,
+			   iRobot.DISTANCE : 2,
+			   iRobot.ANGLE : 2,
+			   iRobot.BATTERY_CAPACITY : 2,
+			   iRobot.OI_MODE : 1}
+
 	def __init__(self):
 		'''
 		Establishes connection to the iRobot and creates a thread for data reading
@@ -12,8 +27,6 @@ class iRobot(object):
 		self.connection = serial.Serial('/dev/ttyUSB0', baudrate=115200)
 		# Create a thread to read data
 		self.data_thread = threading.Thread(target=self.read_data)
-		# Create a thread to register button pressses
-		self.button_thread = threading.Thread(taget=self.read_button)
 		# Set a status boolean to True
 		self.running = True
 
@@ -21,7 +34,7 @@ class iRobot(object):
 		'''
 		Starts the iRobot and starts the data reading thread
 		'''
-		self.connection.write(chr(128))
+		self.connection.write(iRobot.START)
 		self.data_thread.start()
 
 	def reset(self):
@@ -52,16 +65,17 @@ class iRobot(object):
 		'''
 		function that constantly updates the information from the sensors
 		'''
-		# Packets: 7, 8, 9, 10, 11, 12, 17, 52, 53
+		# Packets: 7, 18, 19, 20, 26, 35
+		num_of_packets = len(iRobot.PACKETS)
+		num_of_bytes = sum(iRobot.PACKETS.values())
 		with open('data.csv') as data_file:
 			data_writer = csv.writer(data_file, delimiter=',', quoting=csv.QUOTE_NONE)
-			self.connection.write(chr(148) + chr(9) + chr(7) + chr(8) + chr(9) + chr(10) + chr(11) + chr(12) + chr(17) + chr(52) + chr(53))
+			self.connection.write(iRobot.READ_SENSORS + chr(num_of_packets) + ''.join(iRobot.PACKETS.keys()))
 			while (self.running):
-				self.data = self.connection.read(9)
+				self.data = self.connection.read(num_of_bytes)
+				# TODO Check checksum
+				# TODO Parse input
+				# TODO Write to .csv
 				data_writer.writerow([])
-				time.sleep(0.1)
+				time.sleep(0.020)
 			data_file.close()
-
-	def read_button(self):
-		while(self.running):
-			self.button = self.connection.read(1)

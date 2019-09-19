@@ -1,6 +1,8 @@
+import csv
 import serial
 import threading
 import time
+
 class iRobot(object):
 	def __init__(self):
 		'''
@@ -48,14 +50,17 @@ class iRobot(object):
 
 	def read_data(self):
 		'''
-    	function that constantly updates the information from the sensors
-    	'''
+		function that constantly updates the information from the sensors
+		'''
 		# Packets: 7, 8, 9, 10, 11, 12, 17, 52, 53
-		self.connection.write(chr(148) + chr(9) + chr(7) + chr(8) + chr(9) + chr(10) + chr(11) + chr(12) + chr(17) + chr(52) + chr(53))
-		while (self.running):
-			self.data = self.connection.read(9)
-			
-			time.sleep(0.1)
+		with open('data.csv') as data_file:
+			data_writer = csv.writer(data_file, delimiter=',', quoting=csv.QUOTE_NONE)
+			self.connection.write(chr(148) + chr(9) + chr(7) + chr(8) + chr(9) + chr(10) + chr(11) + chr(12) + chr(17) + chr(52) + chr(53))
+			while (self.running):
+				self.data = self.connection.read(9)
+				data_writer.writerow([])
+				time.sleep(0.1)
+			data_file.close()
 
 	def read_button(self):
 		while(self.running):

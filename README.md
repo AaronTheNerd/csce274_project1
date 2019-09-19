@@ -1,6 +1,6 @@
 # CSCE 274 Robotics Project 1
 
-## Task 1. Write an interface1
+## Task 1. Write an interface
 - Connection to the serial interface.
 - Sending of commands.
 - Reading of data.

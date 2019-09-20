@@ -4,8 +4,11 @@ import threading
 import time
 
 class iRobot(object):
+  # Op Codes
 	START = chr(128)
 	READ_SENSORS = chr(148)
+  
+  # Packets
 	WHEEL_DROP_AND_BUMPERS = chr(7) # 1 byte
 	BUTTONS = chr(18) # 1 byte
 	DISTANCE = chr(19) # 2 bytes
@@ -72,7 +75,7 @@ class iRobot(object):
 			data_writer = csv.writer(data_file, delimiter=',', quoting=csv.QUOTE_NONE)
 			self.connection.write(iRobot.READ_SENSORS + chr(num_of_packets) + ''.join(iRobot.PACKETS.keys()))
 			while (self.running):
-				self.data = self.connection.read(num_of_bytes)
+				self.raw_data = self.connection.read(num_of_bytes)
 				# TODO Check checksum
 				# TODO Parse input
 				# TODO Write to .csv

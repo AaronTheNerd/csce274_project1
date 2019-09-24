@@ -2,19 +2,24 @@ import csv
 import serial
 import threading
 import time
+from collections import OrderedDict
+from struct import pack
 
 class iRobot(object):
-  # Op Codes
+	# Op Codes
 	START = chr(128)
-	READ_SENSORS = chr(148)
+	SAFE = chr(131)
+	DRIVE = chr(137)
+	READ_SENSORS = 148
   
-  # Packets
-	WHEEL_DROP_AND_BUMPERS = chr(7) # 1 byte
-	BUTTONS = chr(18) # 1 byte
-	DISTANCE = chr(19) # 2 bytes
-	ANGLE = chr(20) # 2 bytes
-	BATTERY_CAPACITY = chr(26) # 2 bytes
-	OI_MODE = chr(35) # 1 byte
+	# Packets
+	WHEEL_DROP_AND_BUMPERS = 7 # 1 byte
+	BUTTONS = 18 # 1 byte
+	DISTANCE = 19 # 2 bytes
+	ANGLE = 20 # 2 bytes
+	BATTERY_CAPACITY = 26 # 2 bytes
+	OI_MODE = 35 # 1 byte
+	PACKETS = OrderedDict()
 	PACKETS = {iRobot.WHEEL_DROP_AND_BUMPERS : 1,
 			   iRobot.BUTTONS : 1,
 			   iRobot.DISTANCE : 2,
@@ -66,19 +71,21 @@ class iRobot(object):
 
 	def read_data(self):
 		'''
-		function that constantly updates the information from the sensors
+		Constantly updates the information from the sensors
 		'''
-		# Packets: 7, 18, 19, 20, 26, 35
 		num_of_packets = len(iRobot.PACKETS)
 		num_of_bytes = sum(iRobot.PACKETS.values())
-		with open('data.csv') as data_file:
+		with open('data.csv', 'w+') as data_file:
 			data_writer = csv.writer(data_file, delimiter=',', quoting=csv.QUOTE_NONE)
-			self.connection.write(iRobot.READ_SENSORS + chr(num_of_packets) + ''.join(iRobot.PACKETS.keys()))
-			while (self.running):
+			com = pack('>2h', iRobot.READ_SENSORS, num_of_packets)
+			com += pack('>%sh' % num_of_packets, *iRobot.PACKETS.keys())
+			self.connection.write(com)
+			while self.running:
 				self.raw_data = self.connection.read(num_of_bytes)
-				# TODO Check checksum
-				# TODO Parse input
-				# TODO Write to .csv
+				checksum = 19 + self.raw_data[1] + self.raw_data[-1]
+				fmt = '>2h'
+				if checksum & 255 != 0:
+					self.stop()
 				data_writer.writerow([])
 				time.sleep(0.020)
 			data_file.close()

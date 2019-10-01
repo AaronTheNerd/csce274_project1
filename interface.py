@@ -110,7 +110,7 @@ class iRobot(object):
 				# Parse Data
 				self.decode(self.data)
 				# Write sensor output
-				data_writer.writerow([self.LB, self.RB, self.clean_pressed, self.DISTANCE, self.angle])
+				data_writer.writerow([self.clean_pressed, self.clock_pressed, self.day_pressed])
 				# Wait
 				time.sleep(self.DELAY)
 			data_file.close()
@@ -189,6 +189,7 @@ class iRobot(object):
 
 	def stop(self):
 		self.connection.write(pack('>B2h', self.DRIVE, 0, 0))
+		time.sleep(self.DELAY)
 
 def main():
 	robot = iRobot()

@@ -28,6 +28,7 @@ class iRobot(object):
 	DELAY = 0.1 # s
 	MAX_SPEED = 0.5 # m/s
 	DIAMETER = 0.235 # m
+	STRAIGHT = 32767
 
 	def __init__(self):
 		'''
@@ -171,21 +172,23 @@ class iRobot(object):
 		else:
 			self.mode = 'FULL'
 
-	def drive(self, distance, speed=MAX_SPEED):
-		hex_speed = format(int(speed), '#06x')[2:]
-		speed_high = '0x' + hex_speed[:2]
-		speed_low = '0x' + hex_speed[2:]
+	def drive(self, distance, speed):
+		if speed is None:
+			speed = self.MAX_SPEED
 		t = distance / speed
-		self.connection.write(pack('>B2h', self.DRIVE, speed * 1000, 0))
+		self.connection.write(pack('>B2h', self.DRIVE, speed * 1000, self.STRAIGHT))
 		time.sleep(t)
 		self.stop()
 
-	def turn(self, angle, speed=MAX_SPEED):
+	def turn(self, angle, speed):
+		if speed is None:
+			speed = self.MAX_SPEED
 		deg_per_sec = speed * 360.0 / (math.pi * self.DIAMETER)
 		t = angle / deg_per_sec
 		self.connection.write(pack('>B2h', self.DRIVE, speed * 1000, 1))
 		time.sleep(t)
 		self.stop()
+		time.sleep(self.DELAY)
 
 	def stop(self):
 		self.connection.write(pack('>B2h', self.DRIVE, 0, 0))

@@ -2,6 +2,7 @@ import csv
 import serial
 import threading
 import time
+import math
 from struct import pack, unpack
 
 class iRobot(object):
@@ -30,6 +31,9 @@ class iRobot(object):
 				   iRobot.ANGLE : 'Bh',
 				   iRobot.BATTERY_CAPACITY : 'BH',
 				   iRobot.OI_MODE : 'BB'}
+	# Variables
+	MAX_SPEED = 0.5 # m/s
+	DIAMETER = 0.235 # m
 
 	def __init__(self):
 		'''
@@ -71,7 +75,8 @@ class iRobot(object):
 		'''
 		Sets the iRobot into safe mode
 		'''
-		return
+		self.connection.write(iRobot.SAFE)
+		time.sleep(0.01)
 
 	def read_data(self):
 		'''
@@ -94,6 +99,7 @@ class iRobot(object):
 						i += self.PACKETS[ord(self.raw_data[i])]
 					else:
 						print "Unknown packet ID found"
+						break
 				fmt += 'B'
 				self.data = unpack(fmt, self.raw_data)[2:-1]
 				for i in range(0, len(self.data), step=2):
@@ -129,3 +135,28 @@ class iRobot(object):
 				data_writer.writerow([])
 				time.sleep(0.020)
 			data_file.close()
+	def drive(self, distance, speed=iRobot.MAX_SPEED):
+		t = distance / speed
+		self.connection.write(iRobot.DRIVE, chr(int('0x80', 16)), chr(0), chr(0), chr(0))
+		threading.Timer(t, self.stop)
+
+	def turn(self, angle):
+		deg_per_sec = iRobot.MAX_SPEED / (math.pi * iRobot.DIAMETER) * 360.0
+		t = angle / deg_per_sec
+		threading.Timer(t, self.stop)
+
+	def stop(self):
+		self.connection.write(iRobot.DRIVE, chr(0), chr(0), chr(0), chr(0))
+
+def main():
+	robot = iRobot()
+	robot.safe()
+	N = 3 # Num of sides
+	L = 2.0 / N # Length of a side
+	D = ((N - 2) * 180.0) / N # Interior Angle
+	for i in range(N):
+		robot.drive(L)
+		robot.turn(D)
+
+if __name__ == "__main__":
+	main()

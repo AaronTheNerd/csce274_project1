@@ -7,9 +7,11 @@ from struct import pack, unpack
 
 class iRobot(object):
 	# Op Codes
+	RESET = chr(7)
 	START = chr(128)
 	SAFE = chr(131)
-	DRIVE = chr(137)
+	STOP = chr(173)
+	DRIVE = 137
 	READ_SENSORS = 148
   
 	# Packets
@@ -19,19 +21,11 @@ class iRobot(object):
 	ANGLE = 20 # 2 bytes
 	BATTERY_CAPACITY = 26 # 2 bytes
 	OI_MODE = 35 # 1 byte
-	PACKETS = {iRobot.WHEEL_DROP_AND_BUMPERS : 1,
-			   iRobot.BUTTONS : 1,
-			   iRobot.DISTANCE : 2,
-			   iRobot.ANGLE : 2,
-			   iRobot.BATTERY_CAPACITY : 2,
-			   iRobot.OI_MODE : 1}
-	PACKETS_FMT = {iRobot.WHEEL_DROP_AND_BUMPERS : 'BB',
-				   iRobot.BUTTONS : 'BB',
-				   iRobot.DISTANCE : 'Bh',
-				   iRobot.ANGLE : 'Bh',
-				   iRobot.BATTERY_CAPACITY : 'BH',
-				   iRobot.OI_MODE : 'BB'}
+	PACKETS = {BUTTONS : 1}
+	PACKETS_FMT = {BUTTONS : 'BB'}
+
 	# Variables
+	DELAY = 0.1 # s
 	MAX_SPEED = 0.5 # m/s
 	DIAMETER = 0.235 # m
 
@@ -41,6 +35,8 @@ class iRobot(object):
 		'''
 		# Establish connection
 		self.connection = serial.Serial('/dev/ttyUSB0', baudrate=115200)
+		# Wait
+		time.sleep(self.DELAY)
 		# Create a thread to read data
 		self.data_thread = threading.Thread(target=self.read_data)
 		# Set a status boolean to True
@@ -50,111 +46,149 @@ class iRobot(object):
 		'''
 		Starts the iRobot and starts the data reading thread
 		'''
-		self.connection.write(iRobot.START)
+		# Send start command
+		self.connection.write(self.START)
+		# Start data thread
 		self.data_thread.start()
-		time.sleep(0.01)
+		# Wait
+		time.sleep(self.DELAY)
 
 	def reset(self):
 		'''
 		Resets the iRobot
 		'''
-		return
+		# Send reset command
+		self.connection.write(self.RESET)
 
 	def stop(self):
 		'''
 		Stops the iRobot
 		'''
+		# Stop running
 		self.running = False
-
-	def passive(self):
-		'''
-		Sets the iRobot into passive mode
-		'''
-		return
+		# Send stop command
+		self.connection.write(self.STOP)
+		# Wait
+		time.sleep(self.DELAY)
 
 	def safe(self):
 		'''
 		Sets the iRobot into safe mode
 		'''
-		self.connection.write(iRobot.SAFE)
-		time.sleep(0.01)
+		# Send safe command
+		self.connection.write(self.SAFE)
+		# Wait
+		time.sleep(self.DELAY)
 
 	def read_data(self):
 		'''
 		Constantly updates the information from the sensors
 		'''
-		num_of_packets = len(iRobot.PACKETS)
-		num_of_bytes = sum(iRobot.PACKETS.values()) + num_of_packets + 3 # Header, n-bytes, checksum
+		# Define wanted number of packets
+		num_of_packets = len(self.PACKETS)
+		# Define expected number of bytes
+		num_of_bytes = sum(self.PACKETS.values()) + num_of_packets + 3 # Header, n-bytes, checksum
+		# Open file
 		with open('data.csv', 'w+') as data_file:
+			# Open writer
 			data_writer = csv.writer(data_file, delimiter=',', quoting=csv.QUOTE_NONE)
-			com = pack('>2h', iRobot.READ_SENSORS, num_of_packets)
-			com += pack('>%sh' % num_of_packets, *iRobot.PACKETS.keys())
+			# Pack
+			com = pack('>2B', self.READ_SENSORS, num_of_packets)
+			com += pack('>%sB' % num_of_packets, *self.PACKETS.keys())
+			# Send command
 			self.connection.write(com)
+			# Wait
+			time.sleep(self.DELAY)
+			# Read data while running
 			while self.running:
-				self.raw_data = self.connection.read(num_of_bytes)
-				fmt = '>BB'
-				for i in range(2, num_of_bytes - 1):
-					if ord(self.raw_data[i]) in self.PACKETS_FMT.keys():
-						i_fmt = self.PACKETS_FMT[ord(self.raw_data[i])]
-						fmt += i_fmt
-						i += self.PACKETS[ord(self.raw_data[i])]
-					else:
-						print "Unknown packet ID found"
-						break
-				fmt += 'B'
-				self.data = unpack(fmt, self.raw_data)[2:-1]
-				for i in range(0, len(self.data), step=2):
-					if ord(self.data[i]) == iRobot.WHEEL_DROP_AND_BUMPERS:
-						self.LWD = (self.data[i + 1] & 8) == 8
-						self.RWD = (self.data[i + 1] & 4) == 4
-						self.LB = (self.data[i + 1] & 2) == 2
-						self.RB = (self.data[i + 1] & 1) == 1
-					elif ord(self.data[i]) == iRobot.BUTTONS:
-						self.clock_pressed = (self.data[i + 1] & 128) == 128
-						self.schedule_pressed = (self.data[i + 1] & 64) == 64
-						self.day_pressed = (self.data[i + 1] & 32) == 32
-						self.hour_pressed = (self.data[i + 1] & 16) == 16
-						self.minute_pressed = (self.data[i + 1] & 8) == 8
-						self.dock_pressed = (self.data[i + 1] & 4) == 4
-						self.spot_pressed = (self.data[i + 1] & 2) == 2
-						self.clean_pressed = (self.data[i + 1] & 1) == 1
-					elif ord(self.data[i]) == iRobot.DISTANCE:
-						self.distance = self.data[i + 1]
-					elif ord(self.data[i]) == iRobot.ANGLE:
-						self.angle = self.data[i + 1]
-					elif ord(self.data[i]) == iRobot.BATTERY_CAPACITY:
-						self.battery_capacity = self.data[i + 1]
-					elif ord(self.data[i]) == iRobot.OI_MODE:
-						if self.data[i + 1] == 0:
-							self.mode = 'OFF'
-						elif self.data[i + 1] == 1:
-							self.mode = 'PASSIVE'
-						elif self.data[i + 1] == 2:
-							self.mode = 'SAFE'
-						else:
-							self.mode = 'FULL'
+				# Grab raw data without header, n-bytes, and checksum
+				self.raw_data = self.connection.read(num_of_bytes)[2:-1]
+				# Build Format
+				fmt = self.build_fmt(self.raw_data)
+				# Unpack return
+				self.data = unpack(fmt, self.raw_data)
+				# Parse Data
+				self.decode(self.data)
+				# Write sensor output
 				data_writer.writerow([self.LB, self.RB, self.clean_pressed, self.DISTANCE, self.angle])
-				time.sleep(0.020)
+				# Wait
+				time.sleep(self.DELAY)
 			data_file.close()
-			
-	def drive(self, distance, speed=iRobot.MAX_SPEED):
-		hex_speed = format(speed, '#06x')[2:]
+
+	def build_fmt(self, raw_data):
+		fmt = ''
+		for i in range(len(raw_data)):
+			try:
+				i_fmt = self.PACKETS_FMT[ord(raw_data[i])]
+				fmt += i_fmt
+				i += self.PACKETS[ord(raw_data[i])]
+			except:
+				print "Unknown packet ID found"
+				break
+		return fmt
+
+	def decode(self, data):
+		for i in range(0, len(data), step=2):
+			if ord(data[i]) == self.WHEEL_DROP_AND_BUMPERS:
+				self.decodeWDAB(data[i + 1])
+			elif ord(data[i]) == self.BUTTONS:
+				self.decodeB(data[i + 1])
+			elif ord(data[i]) == self.DISTANCE:
+				self.distance = data[i + 1]
+			elif ord(data[i]) == self.ANGLE:
+				self.angle = data[i + 1]
+			elif ord(data[i]) == self.BATTERY_CAPACITY:
+				self.battery_capacity = data[i + 1]
+			elif ord(data[i]) == self.OI_MODE:
+				self.decodeOI(data[i + 1])
+			else:
+				print "Unknown ID found"
+				break
+
+	def decodeWDAB(self, data):
+		self.LWD = (data & 8) == 8
+		self.RWD = (data & 4) == 4
+		self.LB = (data & 2) == 2
+		self.RB = (data & 1) == 1
+
+	def decodeB(self, data):
+		self.clock_pressed = (data & 128) == 128
+		self.schedule_pressed = (data & 64) == 64
+		self.day_pressed = (data & 32) == 32
+		self.hour_pressed = (data & 16) == 16
+		self.minute_pressed = (data & 8) == 8
+		self.dock_pressed = (data & 4) == 4
+		self.spot_pressed = (data & 2) == 2
+		self.clean_pressed = (data & 1) == 1
+
+	def decodeOI(self, data):
+		if data == 0:
+			self.mode = 'OFF'
+		elif data == 1:
+			self.mode = 'PASSIVE'
+		elif data == 2:
+			self.mode = 'SAFE'
+		else:
+			self.mode = 'FULL'
+
+	def drive(self, distance, speed=MAX_SPEED):
+		hex_speed = format(int(speed), '#06x')[2:]
 		speed_high = '0x' + hex_speed[:2]
 		speed_low = '0x' + hex_speed[2:]
 		t = distance / speed
-		self.connection.write(iRobot.DRIVE + chr(int(speed_high, 16)) + chr(int(speed_low, 16)) + chr(int('0x80', 16)) + chr(0))
-		timer = threading.Timer(t, self.stop)
-		timer.start()
+		self.connection.write(pack('>B2h', self.DRIVE, speed * 1000, 0))
+		time.sleep(t)
+		self.stop()
 
-	def turn(self, angle):
-		deg_per_sec = iRobot.MAX_SPEED / (math.pi * iRobot.DIAMETER) * 360.0
+	def turn(self, angle, speed=MAX_SPEED):
+		deg_per_sec = speed * 360.0 / (math.pi * self.DIAMETER)
 		t = angle / deg_per_sec
-		self.connection.write(iRobot.DRIVE + chr(0) + chr(0) + chr(int('0xFF', 16)) + chr(int('0xFF', 16)))
-		timer = threading.Timer(t, self.stop)
-		timer.start()
+		self.connection.write(pack('>B2h', self.DRIVE, speed * 1000, 1))
+		time.sleep(t)
+		self.stop()
 
 	def stop(self):
-		self.connection.write(iRobot.DRIVE + chr(0) + chr(0) + chr(0) + chr(0))
+		self.connection.write(pack('>B2h', self.DRIVE, 0, 0))
 
 def main():
 	robot = iRobot()

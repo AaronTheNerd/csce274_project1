@@ -136,19 +136,22 @@ class iRobot(object):
 				data_writer.writerow([self.LB, self.RB, self.clean_pressed, self.DISTANCE, self.angle])
 				time.sleep(0.020)
 			data_file.close()
+			
 	def drive(self, distance, speed=iRobot.MAX_SPEED):
 		hex_speed = format(speed, '#06x')[2:]
 		speed_high = '0x' + hex_speed[:2]
 		speed_low = '0x' + hex_speed[2:]
 		t = distance / speed
 		self.connection.write(iRobot.DRIVE + chr(int(speed_high, 16)) + chr(int(speed_low, 16)) + chr(int('0x80', 16)) + chr(0))
-		threading.Timer(t, self.stop)
+		timer = threading.Timer(t, self.stop)
+		timer.start()
 
 	def turn(self, angle):
 		deg_per_sec = iRobot.MAX_SPEED / (math.pi * iRobot.DIAMETER) * 360.0
 		t = angle / deg_per_sec
 		self.connection.write(iRobot.DRIVE + chr(0) + chr(0) + chr(int('0xFF', 16)) + chr(int('0xFF', 16)))
-		threading.Timer(t, self.stop)
+		timer = threading.Timer(t, self.stop)
+		timer.start()
 
 	def stop(self):
 		self.connection.write(iRobot.DRIVE + chr(0) + chr(0) + chr(0) + chr(0))

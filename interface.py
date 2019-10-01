@@ -52,6 +52,7 @@ class iRobot(object):
 		'''
 		self.connection.write(iRobot.START)
 		self.data_thread.start()
+		time.sleep(0.01)
 
 	def reset(self):
 		'''
@@ -132,7 +133,7 @@ class iRobot(object):
 							self.mode = 'SAFE'
 						else:
 							self.mode = 'FULL'
-				data_writer.writerow([])
+				data_writer.writerow([self.LB, self.RB, self.clean_pressed, self.DISTANCE, self.angle])
 				time.sleep(0.020)
 			data_file.close()
 	def drive(self, distance, speed=iRobot.MAX_SPEED):
@@ -154,6 +155,7 @@ class iRobot(object):
 
 def main():
 	robot = iRobot()
+	robot.start()
 	robot.safe()
 	N = 3 # Num of sides
 	L = 2.0 / N # Length of a side

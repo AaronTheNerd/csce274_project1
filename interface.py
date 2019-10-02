@@ -26,6 +26,7 @@ class iRobot(object):
 
 	# Variables
 	DELAY = 0.1 # s
+	SENSOR_DELAY = 0.015 # s
 	MAX_SPEED = 0.5 # m/s
 	DIAMETER = 0.235 # m
 	STRAIGHT = 32767
@@ -60,6 +61,8 @@ class iRobot(object):
 		'''
 		# Send reset command
 		self.connection.write(self.RESET)
+		# Wait
+		time.sleep(self.DELAY)
 
 	def stop(self):
 		'''
@@ -113,11 +116,14 @@ class iRobot(object):
 				# Write sensor output
 				data_writer.writerow([self.clean_pressed, self.clock_pressed, self.day_pressed])
 				# Wait
-				time.sleep(self.DELAY)
+				time.sleep(self.SENSOR_DELAY)
 			data_file.close()
 
 	def build_fmt(self, raw_data):
-		fmt = ''
+		'''
+		Dynamically develops a format to unpack the input
+		'''
+		fmt = '>'
 		for i in range(len(raw_data)):
 			try:
 				i_fmt = self.PACKETS_FMT[ord(raw_data[i])]
@@ -129,6 +135,9 @@ class iRobot(object):
 		return fmt
 
 	def decode(self, data):
+		'''
+		Decodes all unpacked data
+		'''
 		for i in range(0, len(data), step=2):
 			if ord(data[i]) == self.WHEEL_DROP_AND_BUMPERS:
 				self.decodeWDAB(data[i + 1])
@@ -147,12 +156,18 @@ class iRobot(object):
 				break
 
 	def decodeWDAB(self, data):
+		'''
+		Takes the byte that represents the wheel drop and bump sensors and decodes it
+		'''
 		self.LWD = (data & 8) == 8
 		self.RWD = (data & 4) == 4
 		self.LB = (data & 2) == 2
 		self.RB = (data & 1) == 1
 
 	def decodeB(self, data):
+		'''
+		Takes the byte that represents Buttons and decodes it
+		'''
 		self.clock_pressed = (data & 128) == 128
 		self.schedule_pressed = (data & 64) == 64
 		self.day_pressed = (data & 32) == 32
@@ -163,6 +178,9 @@ class iRobot(object):
 		self.clean_pressed = (data & 1) == 1
 
 	def decodeOI(self, data):
+		'''
+		Takes the byte that represents OI and decodes it
+		'''
 		if data == 0:
 			self.mode = 'OFF'
 		elif data == 1:
@@ -172,20 +190,24 @@ class iRobot(object):
 		else:
 			self.mode = 'FULL'
 
-	def drive(self, distance, speed):
-		if speed is None:
-			speed = self.MAX_SPEED
+	def drive(self, distance, speed=MAX_SPEED / 2.0):
+		'''
+		Takes a distance in meters and a speed in meters per second and moves the iRobot the intended distance
+		'''
+		speed = self.MAX_SPEED if speed > self.MAX_SPEED else speed
 		t = distance / speed
-		self.connection.write(pack('>B2h', self.DRIVE, speed * 1000, self.STRAIGHT))
+		self.connection.write(pack('>B2h', self.DRIVE, int(speed * 1000), self.STRAIGHT))
 		time.sleep(t)
 		self.stop()
 
-	def turn(self, angle, speed):
-		if speed is None:
-			speed = self.MAX_SPEED
-		deg_per_sec = speed * 360.0 / (math.pi * self.DIAMETER)
+	def turn(self, angle, speed=MAX_SPEED / 5.0):
+		'''
+		Takes an angle in degrees and a speed in meters per second to rotate the iRobot in place
+		'''
+		speed = self.MAX_SPEED if speed > self.MAX_SPEED else speed
+		deg_per_sec = speed * 180.0 / (self.RADIUS * math.pi)
 		t = angle / deg_per_sec
-		self.connection.write(pack('>B2h', self.DRIVE, speed * 1000, 1))
+		self.connection.write(pack('>B2h', self.DRIVE, int(speed * 1000), 1))
 		time.sleep(t)
 		self.stop()
 		time.sleep(self.DELAY)
@@ -200,7 +222,7 @@ def main():
 	robot.safe()
 	N = 3 # Num of sides
 	L = 2.0 / N # Length of a side
-	D = ((N - 2) * 180.0) / N # Interior Angle
+	D = 360.0 / N # Angle per corner
 	for i in range(N):
 		robot.drive(L)
 		robot.turn(D)

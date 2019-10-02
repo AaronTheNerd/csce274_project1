@@ -4,6 +4,21 @@ import threading
 import time
 import math
 from struct import pack, unpack
+'''
+Task 1
+	Connection to the serial interface
+	Sending of commands
+	Reading data
+	Close connection
+Task 2
+	Control state of robot
+	Read the state of the buttons *************** TODO ***************
+	Send a Drive command to set the velocity and the radius of the wheels as the two given arguments
+Task 3 *************** TODO ***************
+	Initializes the robot, by setting it in passive and safe mode
+	If the robot is stopped, once the clean/power button is pressed, draw a polygon
+	If the robot is moving when the clean/power button is pressed, stop the robot at the next goal vertex
+'''
 
 class iRobot(object):
 	# Op Codes
@@ -30,6 +45,8 @@ class iRobot(object):
 	MAX_SPEED = 0.5 # m/s
 	DIAMETER = 0.235 # m
 	STRAIGHT = 32767
+	CCW = 1
+	CW = -1
 
 	def __init__(self):
 		'''
@@ -72,6 +89,7 @@ class iRobot(object):
 		self.running = False
 		# Send stop command
 		self.connection.write(self.STOP)
+		self.connection.close()
 		# Wait
 		time.sleep(self.DELAY)
 
@@ -190,30 +208,37 @@ class iRobot(object):
 		else:
 			self.mode = 'FULL'
 
-	def drive(self, distance, speed=MAX_SPEED / 2.0):
+	def drive(self, speed=MAX_SPEED / 2.0, radius=STRAIGHT):
+		self.connection.write(pack('>B2h', self.DRIVE, int(speed * 1000), radius))
+
+	def drive_straight(self, distance, speed=MAX_SPEED / 2.0):
 		'''
-		Takes a distance in meters and a speed in meters per second and moves the iRobot the intended distance
+		Takes a distance in meters and a speed in meters per second and moves the iRobot the intended distance in a straight line
 		'''
 		speed = self.MAX_SPEED if speed > self.MAX_SPEED else speed
 		t = distance / speed
-		self.connection.write(pack('>B2h', self.DRIVE, int(speed * 1000), self.STRAIGHT))
-		time.sleep(t)
+		self.drive(speed)
+		time.sleep(abs(t))
 		self.stop()
 
 	def turn(self, angle, speed=MAX_SPEED / 5.0):
 		'''
 		Takes an angle in degrees and a speed in meters per second to rotate the iRobot in place
+		If angle is positive then the iRobot will turn counter clockwise
 		'''
-		speed = self.MAX_SPEED if speed > self.MAX_SPEED else speed
+		speed = self.MAX_SPEED if speed > self.MAX_SPEED else abs(speed)
 		deg_per_sec = speed * 180.0 / (self.RADIUS * math.pi)
 		t = angle / deg_per_sec
-		self.connection.write(pack('>B2h', self.DRIVE, int(speed * 1000), 1))
-		time.sleep(t)
+		if angle < 0:
+			self.drive(speed, self.CW)
+		else:
+			self.drive(speed, self.CCW)
+		time.sleep(abs(t))
 		self.stop()
 		time.sleep(self.DELAY)
 
 	def stop(self):
-		self.connection.write(pack('>B2h', self.DRIVE, 0, 0))
+		self.drive(0, 0)
 		time.sleep(self.DELAY)
 
 def main():
@@ -224,7 +249,7 @@ def main():
 	L = 2.0 / N # Length of a side
 	D = 360.0 / N # Angle per corner
 	for i in range(N):
-		robot.drive(L)
+		robot.drive_straight(L)
 		robot.turn(D)
 
 if __name__ == "__main__":

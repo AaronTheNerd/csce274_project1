@@ -40,10 +40,11 @@ class iRobot(object):
 	PACKETS_FMT = {BUTTONS : 'BB'}
 
 	# Variables
-	DELAY = 0.1 # s
+	DELAY = 0.25 # s
 	SENSOR_DELAY = 0.015 # s
 	MAX_SPEED = 0.5 # m/s
 	DIAMETER = 0.235 # m
+	RADIUS = DIAMETER / 2.0 # m
 	STRAIGHT = 32767
 	CCW = 1
 	CW = -1
@@ -86,7 +87,6 @@ class iRobot(object):
 		Stops the iRobot
 		'''
 		# Stop running
-		self.running = False
 		# Send stop command
 		self.connection.write(self.STOP)
 		self.connection.close()
@@ -109,7 +109,7 @@ class iRobot(object):
 		# Define wanted number of packets
 		num_of_packets = len(self.PACKETS)
 		# Define expected number of bytes
-		num_of_bytes = sum(self.PACKETS.values()) + num_of_packets + 3 # Header, n-bytes, checksum
+		num_of_bytes = sum(self.PACKETS.values()) + len(self.PACKETS) + 3 # Header, n-bytes, checksum
 		# Open file
 		with open('data.csv', 'w+') as data_file:
 			# Open writer
@@ -117,6 +117,7 @@ class iRobot(object):
 			# Pack
 			com = pack('>2B', self.READ_SENSORS, num_of_packets)
 			com += pack('>%sB' % num_of_packets, *self.PACKETS.keys())
+			print unpack('>3B', com)
 			# Send command
 			self.connection.write(com)
 			# Wait
@@ -124,15 +125,16 @@ class iRobot(object):
 			# Read data while running
 			while self.running:
 				# Grab raw data without header, n-bytes, and checksum
-				self.raw_data = self.connection.read(num_of_bytes)[2:-1]
+				self.raw_data = self.connection.read(size=num_of_bytes)[2:-1]
 				# Build Format
-				fmt = self.build_fmt(self.raw_data)
+				fmt = '>BB'
 				# Unpack return
 				self.data = unpack(fmt, self.raw_data)
+				print self.data
 				# Parse Data
-				self.decode(self.data)
+				self.decodeB(self.data[1])
 				# Write sensor output
-				data_writer.writerow([self.clean_pressed, self.clock_pressed, self.day_pressed])
+				print [self.clean_pressed, self.clock_pressed, self.day_pressed]
 				# Wait
 				time.sleep(self.SENSOR_DELAY)
 			data_file.close()
@@ -144,8 +146,7 @@ class iRobot(object):
 		fmt = '>'
 		for i in range(len(raw_data)):
 			try:
-				i_fmt = self.PACKETS_FMT[ord(raw_data[i])]
-				fmt += i_fmt
+				fmt += self.PACKETS_FMT[ord(raw_data[i])]
 				i += self.PACKETS[ord(raw_data[i])]
 			except:
 				print "Unknown packet ID found"
@@ -186,14 +187,14 @@ class iRobot(object):
 		'''
 		Takes the byte that represents Buttons and decodes it
 		'''
-		self.clock_pressed = (data & 128) == 128
-		self.schedule_pressed = (data & 64) == 64
-		self.day_pressed = (data & 32) == 32
-		self.hour_pressed = (data & 16) == 16
-		self.minute_pressed = (data & 8) == 8
-		self.dock_pressed = (data & 4) == 4
-		self.spot_pressed = (data & 2) == 2
-		self.clean_pressed = (data & 1) == 1
+		self.clock_pressed = bool(data & 128)
+		self.schedule_pressed = bool(data & 64)
+		self.day_pressed = bool(data & 32)
+		self.hour_pressed = bool(data & 16)
+		self.minute_pressed = bool(data & 8)
+		self.dock_pressed = bool(data & 4)
+		self.spot_pressed = bool(data & 2)
+		self.clean_pressed = bool(data & 1)
 
 	def decodeOI(self, data):
 		'''
@@ -235,7 +236,6 @@ class iRobot(object):
 			self.drive(speed, self.CCW)
 		time.sleep(abs(t))
 		self.stop()
-		time.sleep(self.DELAY)
 
 	def stop(self):
 		self.drive(0, 0)
@@ -245,12 +245,15 @@ def main():
 	robot = iRobot()
 	robot.start()
 	robot.safe()
-	N = 3 # Num of sides
-	L = 2.0 / N # Length of a side
-	D = 360.0 / N # Angle per corner
-	for i in range(N):
-		robot.drive_straight(L)
-		robot.turn(D)
+	# N = 4 # Num of sides
+	# L = 2.0 / N # Length of a side
+	# D = 360.0 / N # Angle per corner
+	# for i in range(N):
+	# 	robot.drive_straight(L)
+	# 	robot.turn(D)
+	# 	time.sleep(0.010)
+	time.sleep(5)
+	robot.stop()
 
 if __name__ == "__main__":
 	main()

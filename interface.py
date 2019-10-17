@@ -5,28 +5,44 @@ import time
 import math
 from struct import pack, unpack
 '''
-Task 1
-	Connection to the serial interface
-	Sending of commands
-	Reading data
-	Close connection
-Task 2
-	Control state of robot
-	Read the state of the buttons *************** TODO ***************
-	Send a Drive command to set the velocity and the radius of the wheels as the two given arguments
-Task 3 *************** TODO ***************
-	Initializes the robot, by setting it in passive and safe mode
-	If the robot is stopped, once the clean/power button is pressed, draw a polygon
-	If the robot is moving when the clean/power button is pressed, stop the robot at the next goal vertex
+Task 1. Augment the interface1 written for Task 2 in Project 1 including:
+	a. Adding the possibility to set the robot to Full mode.
+	b. The reading of the Bumps and Wheel Drops sensor data. TODO
+	c. The reading of all of the Cliff (packets 9-13, extremes included). TODO
+	d. The reading of the Angle and Distance (if not done in Project 1). TODO
+	e. The use of Drive Direct.
+	f. Play a warning song. TODO
+Task 2. Write a program that utilizes the augmented interface in the previous task and:
+	a. Initializes the robot, by setting it in passive and safe mode (done in Project 1).
+	b. If the robot is stopped, and none of the Wheel Drops and Cliff are activated, once the TODO
+	clean/power button is pressed, it moves according to a random walk: the robot should
+	move forward until it reaches an obstacle, then rotate in place for a 180 degrees plus a
+	small random angle (between -45 and +45 degrees), then move forward again, and
+	repeat. The rotation should be clockwise if the bumper left is pressed, while it should be
+	counterclockwise if the bumper right is pressed. If both of them are pressed, take a
+	random direction of rotation. Note that if the robot starts with a bumper pressed, it
+	should rotate according to the rules described above.
+	c. If the robot is moving, TODO
+		i. when the clean/power button is pressed, stop the robot wherever it is.
+		ii. check for the state of the Wheel Drops. In case any of them are activated, the
+		robot should stop and play a warning song.
 '''
 
 class iRobot(object):
+	'''
+	A class that fully controls an iRobot
+	'''
+
+	################################################## Const Variables ##################################################
+
 	# Op Codes
 	RESET = chr(7)
 	START = chr(128)
 	SAFE = chr(131)
+	FULL = chr(132)
 	STOP = chr(173)
 	DRIVE = 137
+	DRIVE_DIRECT = 145
 	READ_SENSORS = 148
   
 	# Packets
@@ -34,8 +50,6 @@ class iRobot(object):
 	BUTTONS = 18 # 1 byte
 	DISTANCE = 19 # 2 bytes
 	ANGLE = 20 # 2 bytes
-	BATTERY_CAPACITY = 26 # 2 bytes
-	OI_MODE = 35 # 1 byte
 	PACKETS = {BUTTONS : 1}
 	PACKETS_FMT = {BUTTONS : 'BB'}
 
@@ -61,6 +75,8 @@ class iRobot(object):
 		self.data_thread = threading.Thread(target=self.read_data)
 		# Set a status boolean to True
 		self.running = True
+
+	################################################## OI Mode and Starting ##################################################
 
 	def start(self):
 		'''
@@ -102,6 +118,17 @@ class iRobot(object):
 		# Wait
 		time.sleep(self.DELAY)
 
+	def full(self):
+		'''
+		Sets the iRobot into full mode
+		'''
+		# Send full command
+		self.connection.write(self.FULL)
+		# Wait
+		time.sleep(self.DELAY)
+
+	################################################## Sensor Reading ##################################################
+
 	def read_data(self):
 		'''
 		Constantly updates the information from the sensors
@@ -117,15 +144,15 @@ class iRobot(object):
 			# Pack
 			com = pack('>2B', self.READ_SENSORS, num_of_packets)
 			com += pack('>%sB' % num_of_packets, *self.PACKETS.keys())
-			print unpack('>3B', com)
 			# Send command
 			self.connection.write(com)
 			# Wait
-			time.sleep(self.DELAY)
+			time.sleep(self.SENSOR_DELAY)
 			# Read data while running
 			while self.running:
 				# Grab raw data without header, n-bytes, and checksum
-				self.raw_data = self.connection.read(size=num_of_bytes)[2:-1]
+				self.raw_data = self.connection.read(size=num_of_bytes)
+				print "Raw Data:", self.raw_data
 				# Build Format
 				fmt = '>BB'
 				# Unpack return
@@ -178,10 +205,10 @@ class iRobot(object):
 		'''
 		Takes the byte that represents the wheel drop and bump sensors and decodes it
 		'''
-		self.LWD = (data & 8) == 8
-		self.RWD = (data & 4) == 4
-		self.LB = (data & 2) == 2
-		self.RB = (data & 1) == 1
+		self.LWD = bool(data & 8)
+		self.RWD = bool(data & 4)
+		self.LB = bool(data & 2)
+		self.RB = bool(data & 1)
 
 	def decodeB(self, data):
 		'''
@@ -196,18 +223,7 @@ class iRobot(object):
 		self.spot_pressed = bool(data & 2)
 		self.clean_pressed = bool(data & 1)
 
-	def decodeOI(self, data):
-		'''
-		Takes the byte that represents OI and decodes it
-		'''
-		if data == 0:
-			self.mode = 'OFF'
-		elif data == 1:
-			self.mode = 'PASSIVE'
-		elif data == 2:
-			self.mode = 'SAFE'
-		else:
-			self.mode = 'FULL'
+	################################################## Movement ##################################################
 
 	def drive(self, speed=MAX_SPEED / 2.0, radius=STRAIGHT):
 		self.connection.write(pack('>B2h', self.DRIVE, int(speed * 1000), radius))
@@ -220,7 +236,7 @@ class iRobot(object):
 		t = distance / speed
 		self.drive(speed)
 		time.sleep(abs(t))
-		self.stop()
+		self.stop_drive()
 
 	def turn(self, angle, speed=MAX_SPEED / 5.0):
 		'''
@@ -235,25 +251,39 @@ class iRobot(object):
 		else:
 			self.drive(speed, self.CCW)
 		time.sleep(abs(t))
-		self.stop()
+		self.stop_drive()
 
-	def stop(self):
+	def stop_drive(self):
+		'''
+		Stops the iRobot's wheels
+		'''
 		self.drive(0, 0)
 		time.sleep(self.DELAY)
 
-def main():
+	def drive_direct(self, t, vl, vr):
+		'''
+		Takes a time in seconds and 2 velocities in mm/s
+		These represent the left and right wheel velocities
+		'''
+		# Send drive direct command
+		self.connection.write(pack('>B2h', self.DRIVE_DIRECT, vl, vr))
+		# Wait for t seconds
+		time.sleep(t)
+		# Stop iRobot
+		self.stop_drive()
+
+################################################## Main Method ##################################################
+
+if __name__ == "__main__":
 	robot = iRobot()
 	robot.start()
 	robot.safe()
-	# N = 4 # Num of sides
-	# L = 2.0 / N # Length of a side
-	# D = 360.0 / N # Angle per corner
-	# for i in range(N):
-	# 	robot.drive_straight(L)
-	# 	robot.turn(D)
-	# 	time.sleep(0.010)
+	N = 4 # Num of sides
+	L = 2.0 / N # Length of a side
+	D = 360.0 / N # Angle per corner
+	for i in range(N):
+		robot.drive_straight(L)
+	 	robot.turn(D)
+		time.sleep(0.010)
 	time.sleep(5)
 	robot.stop()
-
-if __name__ == "__main__":
-	main()

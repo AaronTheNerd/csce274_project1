@@ -63,6 +63,10 @@ class iRobot(object):
 	CCW = 1
 	CW = -1
 
+	# States
+	RUNNING = True
+	MOVING = False
+
 	def __init__(self):
 		'''
 		Establishes connection to the iRobot and creates a thread for data reading
@@ -72,9 +76,9 @@ class iRobot(object):
 		# Wait
 		time.sleep(self.DELAY)
 		# Create a thread to read data
-		self.data_thread = threading.Thread(target=self.read_data)
+		self.data_thread = threading.Thread(target=self.read_data, args=(lambda : self.RUNNING))
 		# Set a status boolean to True
-		self.running = True
+		self.RUNNING = True
 
 	################################################## OI Mode and Starting ##################################################
 
@@ -108,6 +112,9 @@ class iRobot(object):
 		self.connection.close()
 		# Wait
 		time.sleep(self.DELAY)
+		# Stop Data Thread
+		self.RUNNING = False
+		self.data_thread.join()
 
 	def safe(self):
 		'''
@@ -129,7 +136,7 @@ class iRobot(object):
 
 	################################################## Sensor Reading ##################################################
 
-	def read_data(self):
+	def read_data(self, running):
 		'''
 		Constantly updates the information from the sensors
 		'''
@@ -147,11 +154,11 @@ class iRobot(object):
 			# Send command
 			self.connection.write(com)
 			# Wait
-			time.sleep(self.SENSOR_DELAY)
+			time.sleep(self.DELAY)
 			# Read data while running
-			while self.running:
+			while running:
 				# Grab raw data without header, n-bytes, and checksum
-				self.raw_data = self.connection.read(size=num_of_bytes)
+				self.raw_data = iRobot.unwrap(self.connection.read(size=num_of_bytes))
 				print "Raw Data:", self.raw_data
 				# Build Format
 				fmt = '>BB'
@@ -165,6 +172,18 @@ class iRobot(object):
 				# Wait
 				time.sleep(self.SENSOR_DELAY)
 			data_file.close()
+
+	@staticmethod
+	def unwrap(raw_data, v1, v2):
+		ret_list = []
+		for index in range(len(raw_data)):
+			if raw_data[index] == v1 and raw_data[(index + 1) % len(raw_data)] == v2:
+				ret_list = [raw_data[(i + index - 1) % len(raw_data)] for i in raw_data]
+				break
+		return ret_list
+
+
+
 
 	def build_fmt(self, raw_data):
 		'''
@@ -226,6 +245,9 @@ class iRobot(object):
 	################################################## Movement ##################################################
 
 	def drive(self, speed=MAX_SPEED / 2.0, radius=STRAIGHT):
+		'''
+		Wrapper for drive commands, required from project 1
+		'''
 		self.connection.write(pack('>B2h', self.DRIVE, int(speed * 1000), radius))
 
 	def drive_straight(self, distance, speed=MAX_SPEED / 2.0):

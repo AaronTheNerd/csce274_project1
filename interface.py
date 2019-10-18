@@ -71,14 +71,10 @@ class iRobot(object):
 		'''
 		Establishes connection to the iRobot and creates a thread for data reading
 		'''
-		# Establish connection
-		self.connection = serial.Serial('/dev/ttyUSB0', baudrate=115200)
-		# Wait
-		time.sleep(self.DELAY)
-		# Create a thread to read data
-		self.data_thread = threading.Thread(target=self.read_data, args=(lambda : self.RUNNING))
-		# Set a status boolean to True
-		self.RUNNING = True
+		self.connection = serial.Serial('/dev/ttyUSB0', baudrate=115200) # Establish connection
+		time.sleep(self.DELAY) # Wait
+		self.data_thread = threading.Thread(target=self.read_data, args=(lambda : self.RUNNING)) # Create a thread to read data
+		self.RUNNING = True # Set a status boolean to True
 
 	################################################## OI Mode and Starting ##################################################
 
@@ -86,53 +82,40 @@ class iRobot(object):
 		'''
 		Starts the iRobot and starts the data reading thread
 		'''
-		# Send start command
-		self.connection.write(self.START)
-		# Start data thread
-		self.data_thread.start()
-		# Wait
-		time.sleep(self.DELAY)
+		self.connection.write(self.START) # Send start command
+		self.data_thread.start() # Start data thread
+		time.sleep(self.DELAY) # Wait
 
 	def reset(self):
 		'''
 		Resets the iRobot
 		'''
-		# Send reset command
-		self.connection.write(self.RESET)
-		# Wait
-		time.sleep(self.DELAY)
+		self.connection.write(self.RESET) # Send reset command
+		time.sleep(self.DELAY) # Wait
 
 	def stop(self):
 		'''
 		Stops the iRobot
 		'''
-		# Stop running
-		# Send stop command
-		self.connection.write(self.STOP)
+		self.connection.write(self.STOP) # Send stop command
 		self.connection.close()
-		# Wait
-		time.sleep(self.DELAY)
-		# Stop Data Thread
-		self.RUNNING = False
+		time.sleep(self.DELAY) # Wait
+		self.RUNNING = False # Stop Data Thread
 		self.data_thread.join()
 
 	def safe(self):
 		'''
 		Sets the iRobot into safe mode
 		'''
-		# Send safe command
-		self.connection.write(self.SAFE)
-		# Wait
-		time.sleep(self.DELAY)
+		self.connection.write(self.SAFE) # Send safe command
+		time.sleep(self.DELAY) # Wait
 
 	def full(self):
 		'''
 		Sets the iRobot into full mode
 		'''
-		# Send full command
-		self.connection.write(self.FULL)
-		# Wait
-		time.sleep(self.DELAY)
+		self.connection.write(self.FULL) # Send full command
+		time.sleep(self.DELAY) # Wait
 
 	################################################## Sensor Reading ##################################################
 
@@ -140,37 +123,23 @@ class iRobot(object):
 		'''
 		Constantly updates the information from the sensors
 		'''
-		# Define wanted number of packets
-		num_of_packets = len(self.PACKETS)
-		# Define expected number of bytes
-		num_of_bytes = sum(self.PACKETS.values()) + len(self.PACKETS) + 3 # Header, n-bytes, checksum
-		# Open file
-		with open('data.csv', 'w+') as data_file:
-			# Open writer
-			data_writer = csv.writer(data_file, delimiter=',', quoting=csv.QUOTE_NONE)
-			# Pack
-			com = pack('>2B', self.READ_SENSORS, num_of_packets)
+		num_of_packets = len(self.PACKETS) # Define wanted number of packets
+		num_of_bytes = sum(self.PACKETS.values()) + len(self.PACKETS) + 3 # Define expected number of bytes with Header, n-bytes, and checksum
+		with open('data.csv', 'w+') as data_file: # Open file
+			data_writer = csv.writer(data_file, delimiter=',', quoting=csv.QUOTE_NONE) # Open writer
+			com = pack('>2B', self.READ_SENSORS, num_of_packets) # Pack
 			com += pack('>%sB' % num_of_packets, *self.PACKETS.keys())
-			# Send command
-			self.connection.write(com)
-			# Wait
-			time.sleep(self.DELAY)
-			# Read data while running
-			while running:
-				# Grab raw data without header, n-bytes, and checksum
-				self.raw_data = iRobot.unwrap(self.connection.read(size=num_of_bytes))
+			self.connection.write(com) # Send sensor command
+			time.sleep(self.DELAY) # Wait
+			while running: # Read data while running
+				self.raw_data = iRobot.unwrap(self.connection.read(size=num_of_bytes)) # Grab raw data
 				print "Raw Data:", self.raw_data
-				# Build Format
-				fmt = '>BB'
-				# Unpack return
-				self.data = unpack(fmt, self.raw_data)
+				fmt = '>BB' # Build Format
+				self.data = unpack(fmt, self.raw_data) # Unpack return
 				print self.data
-				# Parse Data
-				self.decodeB(self.data[1])
-				# Write sensor output
-				print [self.clean_pressed, self.clock_pressed, self.day_pressed]
-				# Wait
-				time.sleep(self.SENSOR_DELAY)
+				self.decodeB(self.data[1]) # Parse Data
+				print [self.clean_pressed, self.clock_pressed, self.day_pressed] # Write sensor output
+				time.sleep(self.SENSOR_DELAY) # Wait
 			data_file.close()
 
 	@staticmethod
@@ -287,12 +256,9 @@ class iRobot(object):
 		Takes a time in seconds and 2 velocities in mm/s
 		These represent the left and right wheel velocities
 		'''
-		# Send drive direct command
-		self.connection.write(pack('>B2h', self.DRIVE_DIRECT, vl, vr))
-		# Wait for t seconds
-		time.sleep(t)
-		# Stop iRobot
-		self.stop_drive()
+		self.connection.write(pack('>B2h', self.DRIVE_DIRECT, vl, vr)) # Send drive direct command
+		time.sleep(t) # Wait for t seconds
+		self.stop_drive() # Stop iRobot
 
 ################################################## Main Method ##################################################
 

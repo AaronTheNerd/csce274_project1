@@ -30,43 +30,43 @@ WHEEL_RAD_T = 1 # Constant value for turning at a radius of 1mm
 #Connector Class
 # This controls basic requirements for connecting to the iRobot, specifically establishing the connection, sending commands and reading from the iRobot
 class PiConnector:
-  def __init__():
+  def __init__(self):
     self.connection = serial.Serial(port='/dev/ttyUSB0', baudrate=115200)
       # Establish connection immediately upon being called
   
-  def send(data):
+  def send(self, data):
     self.connection.write(data)
       # This takes an input string data, and sends it to the iRobot
   
-  def receive(n):
+  def receive(self, n):
     self.connection.read(n)
       # This sends the command to read n number of bytes from iRobot
 
-  def close():
+  def close(self):
     self.connection.close()
       # Closes connection to iRobot
 
 class roombControl:
   # This class controls the managing of commands, and uses PiConnector to send and receive them from the iRobot
-  def __init__():
+  def __init__(self):
     self.connection = PiConnector()
   
-  def setStart():
+  def setStart(self):
     self.connection.send(chr(128))
       #Starts the Open Interface of iRobot, allowing other commands to be sent
-  def setSafe():
+  def setSafe(self):
     self.connection.send(chr(131))
       # Sets the iRobot to safe mode, where all features are allowed to be accessed and changed
-  def setStop():
+  def setStop(self):
     self.connection.send(chr(173))
     sleep(PAUSE)
     self.connection.close()
       # Terminates the Open Interface, and closes connection to iRobot
-  def reset():
+  def reset(self):
     self.connection.send(chr(7))
       # completely resets iRobot. Again, must be set to start again before commands can be sent
 
-  def buttonState():
+  def buttonState(self):
     # Sends request to iRobot for sensor data on buttons, then reads and interprets the returned data
     
     '''
@@ -78,7 +78,7 @@ class roombControl:
       an apparent state of random buttons constantly being pressed, regardless of whether they actually were
     '''
 
-  def drive(vel, rad, sec):
+  def drive(self, vel, rad, sec):
     # This command takes a given velocity(mm/s) and wheel radius, and sends the proper command to the iRobot to then drive at that velocity for a given amount of seconds.
     data = struct.pack('>B2h', 137, vel, rad)
     stopData = struct.pack('>B2h', 137, 0, rad)

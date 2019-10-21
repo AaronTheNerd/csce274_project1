@@ -125,6 +125,7 @@ class iRobot(object):
 		self.connection = serial.Serial('/dev/ttyUSB0', baudrate=115200) # Establish connection
 		time.sleep(self.DELAY) # Wait
 		self.data_thread = threading.Thread(target=self.read_data, args=(lambda : self.RUNNING,)) # Create a thread to read data
+		self.data_thread.daemon = True
 		self.RUNNING = True # Set a status boolean to True
 
 		self.LWD = False
@@ -306,7 +307,9 @@ class iRobot(object):
 			self.drive(speed, self.CW)
 		else:
 			self.drive(speed, self.CCW)
-		time.sleep(abs(t))
+			drive_start_time = time.time()
+		while (time.time() - drive_start_time < t and self.safe_status()):
+			continue
 		self.stop_drive()
 
 	def stop_drive(self):
@@ -322,7 +325,9 @@ class iRobot(object):
 		These represent the left and right wheel velocities
 		'''
 		self.connection.write(pack('>B2h', self.DRIVE_DIRECT, vl, vr)) # Send drive direct command
-		time.sleep(t) # Wait for t seconds
+		drive_start_time = time.time()
+		while (time.time() - drive_start_time < t and self.safe_status()):
+			continue
 		self.stop_drive() # Stop iRobot
 
 	################################################## Magic Methods ##################################################
@@ -334,9 +339,6 @@ class iRobot(object):
 		output += '  Left Bumper Pressed: ' + str(self.LB) + '\n'
 		output += '  Right Bumper Pressed: ' + str(self.RB) + '\n'
 		return output
-
-	def __del__(self):
-		self.stop()
 
 	def safe_status(self):
 		return not (self.LWD or self.RWD or self.LB or self.RB or self.cliff_front_left or self.cliff_front_right or self.cliff_left or self.cliff_right)

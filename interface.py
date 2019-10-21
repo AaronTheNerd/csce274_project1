@@ -196,7 +196,7 @@ class iRobot(object):
 		Constantly updates the information from the sensors
 		'''
 		num_of_packets = len(self.PACKETS) # Define wanted number of packets
-		num_of_bytes = num_of_packets # Define expected number of bytes with Header, n-bytes, and checksum
+		num_of_bytes = num_of_packets # Define expected number of bytes without Header, n-bytes, and checksum
 		for i in range(len(self.PACKETS)):
 			num_of_bytes += self.PACKETS[i].bytes
 		
@@ -288,8 +288,10 @@ class iRobot(object):
 		'''
 		speed = self.MAX_SPEED if speed > self.MAX_SPEED else speed
 		t = distance / speed
+		drive_start_time = time.time()
 		self.drive(speed)
-		time.sleep(abs(t))
+		while (time.time() - drive_start_time < t and self.safe_status()):
+			continue
 		self.stop_drive()
 
 	def turn(self, angle, speed=MAX_SPEED / 5.0):
@@ -336,13 +338,14 @@ class iRobot(object):
 	def __del__(self):
 		self.stop()
 
+	def safe_status(self):
+		return not (self.LWD or self.RWD or self.LB or self.RB or self.cliff_front_left or self.cliff_front_right or self.cliff_left or self.cliff_right)
+
 ################################################## Main Method ##################################################
 
 if __name__ == "__main__":
 	robot = iRobot()
 	robot.start()
 	robot.safe()
-	while time.time() - robot.start_time < 50:
-		print robot
-		time.sleep(0.015)
+	robot.drive_straight(2)
 	robot.stop()

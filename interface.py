@@ -4,42 +4,10 @@ import threading
 import time
 import math
 from struct import pack, unpack
+import random
 '''
-Task 1. Augment the interface1 written for Task 2 in Project 1 including:
-	a. Adding the possibility to set the robot to Full mode.
-	b. The reading of the Bumps and Wheel Drops sensor data.
-	c. The reading of all of the Cliff (packets 9-13, extremes included).
-	d. The reading of the Angle and Distance (if not done in Project 1).
-	e. The use of Drive Direct.
-	f. Play a warning song. TODO
-Task 2. Write a program that utilizes the augmented interface in the previous task and:
-	a. Initializes the robot, by setting it in passive and safe mode (done in Project 1).
-	b. If the robot is stopped, and none of the Wheel Drops and Cliff are activated, once the TODO
-	clean/power button is pressed, it moves according to a random walk: the robot should
-	move forward until it reaches an obstacle, then rotate in place for a 180 degrees plus a
-	small random angle (between -45 and +45 degrees), then move forward again, and
-	repeat. The rotation should be clockwise if the bumper left is pressed, while it should be
-	counterclockwise if the bumper right is pressed. If both of them are pressed, take a
-	random direction of rotation. Note that if the robot starts with a bumper pressed, it
-	should rotate according to the rules described above.
-	c. If the robot is moving, TODO
-		i. when the clean/power button is pressed, stop the robot wherever it is.
-		ii. check for the state of the Wheel Drops. In case any of them are activated, the
-		robot should stop and play a warning song.
-	d. Note that the program should not terminate and should continue listening for button TODO
-	presses and check the state of the Wheel Drops and Cliff, both in b. and c. cases, until
-	the program is terminated.
-	e. Note also that when either bumper is pressed or any of the cliff sensors are triggered, TODO
-	the robot should refuse to drive forward, but can still safely rotate in place. On the other
-	hand, if any of the wheeldrop sensors are triggered, neither forward motion nor
-	rotations are safe, because the robot is not resting properly on the ground.
-	f. Once you are confident enough, you can activate the Full mode. TODO
-	g. [Extra Credit] Log into a file the Distance and Angle, together with unsafe events
-	(namely the wheel drops and/or cliffs) or button press, if happened, over time
-	(timestamp should be included). The format of the file should be as follows:
-	<timestamp>,<datum>
-	where datum is distance, or angle, or the string UNSAFE, in case an unsafe event
-	happened), or BUTTON, in case button pressed.
+	Task 1 f. Play a warning song. TODO
+	Task 2 f. Once you are confident enough, you can activate the Full mode. TODO
 	h. [Extra Credit] Use threads to manage the motion of the robot and the reading of the TODO
 	sensors. Remember that the connection is a shared resource among the different
 	threads, as such you should use a way to synchronize the threads, e.g., Lock
@@ -106,7 +74,7 @@ class iRobot(object):
 
 	# Variables
 	DELAY = 0.25 # s
-	SENSOR_DELAY = 0.015 # s
+	SENSOR_DELAY = 0.010 # s
 	MAX_SPEED = 0.5 # m/s
 	DIAMETER = 0.235 # m
 	RADIUS = DIAMETER / 2.0 # m
@@ -124,9 +92,9 @@ class iRobot(object):
 		'''
 		self.connection = serial.Serial('/dev/ttyUSB0', baudrate=115200) # Establish connection
 		time.sleep(self.DELAY) # Wait
-		self.data_thread = threading.Thread(target=self.read_data, args=(lambda : self.RUNNING,)) # Create a thread to read data
+		self.data_thread = threading.Thread(target=self.read_data) # Create a thread to read data
 		self.data_thread.daemon = True
-		self.RUNNING = True # Set a status boolean to True
+		self.lock = threading.Lock()
 
 		self.LWD = False
 		self.RWD = False
@@ -154,45 +122,62 @@ class iRobot(object):
 		'''
 		Starts the iRobot and starts the data reading thread
 		'''
-		self.connection.write(self.START) # Send start command
+		self.lock.acquire()
+		try:
+			self.connection.write(self.START) # Send start command
+			time.sleep(self.DELAY) # Wait
+		finally:
+			self.lock.release()
 		self.data_thread.start() # Start data thread
 		self.start_time = time.time()
-		time.sleep(self.DELAY) # Wait
 
 	def reset(self):
 		'''
 		Resets the iRobot
 		'''
-		self.connection.write(self.RESET) # Send reset command
-		time.sleep(self.DELAY) # Wait
+		self.lock.acquire()
+		try:
+			self.connection.write(self.RESET) # Send reset command
+			time.sleep(self.DELAY) # Wait
+		finally:
+			self.lock.release()
 
 	def stop(self):
 		'''
 		Stops the iRobot
 		'''
-		self.connection.write(self.STOP) # Send stop command
-		self.connection.close()
-		time.sleep(self.DELAY) # Wait
-		self.RUNNING = False # Stop Data Thread
-		self.data_thread.join()
+		self.lock.acquire()
+		try:
+			self.connection.write(self.STOP) # Send stop command
+			time.sleep(self.DELAY) # Wait
+		finally:
+			self.lock.release()
 
 	def safe(self):
 		'''
 		Sets the iRobot into safe mode
 		'''
-		self.connection.write(self.SAFE) # Send safe command
-		time.sleep(self.DELAY) # Wait
+		self.lock.acquire()
+		try:
+			self.connection.write(self.SAFE) # Send safe command
+			time.sleep(self.DELAY) # Wait
+		finally:
+			self.lock.release()
 
 	def full(self):
 		'''
 		Sets the iRobot into full mode
 		'''
-		self.connection.write(self.FULL) # Send full command
-		time.sleep(self.DELAY) # Wait
+		self.lock.acquire()
+		try:
+			self.connection.write(self.FULL) # Send full command
+			time.sleep(self.DELAY) # Wait
+		finally:
+			self.lock.release()
 
 	################################################## Sensor Reading ##################################################
 
-	def read_data(self, running):
+	def read_data(self):
 		'''
 		Constantly updates the information from the sensors
 		'''
@@ -206,14 +191,21 @@ class iRobot(object):
 			com = chr(self.READ_SENSORS) + chr(num_of_packets) # Pack
 			for i in range(len(self.PACKETS)):
 				com += chr(self.PACKETS[i].id)
-			self.connection.write(com) # Send sensor command
-			time.sleep(self.DELAY) # Wait
-			while running: # Read data while running
+			self.lock.acquire()
+			try:
+				self.connection.write(com) # Send sensor command
+				time.sleep(self.DELAY) # Wait
+			finally:
+				self.lock.release()
+			while True: # Read data while running
 				raw_data = self.connection.read(num_of_bytes + 3)
 				raw_data = iRobot.unwrap(raw_data, chr(19), chr(num_of_bytes)) # Grab raw data and 'unwrap'
 				data = unpack(self.SENSOR_READ_FORMAT, raw_data)[2:-1] # Unpack without header, n-bytes, and checksum
 				self.parse_data(data) # Parse Data
-				data_writer.writerow(['<' + str(time.time() - self.start_time) + '>', self.distance, self.angle, 'UNSAFE' if self.LB or self.RB else 'SAFE'])
+				button_pressed = self.button_pressed()
+				unsafe = not self.safe_to_drive()
+				if button_pressed or unsafe:
+					data_writer.writerow(["<" + str(round(time.time() - self.start_time, 3)) + ">", self.distance, self.angle, "UNSAFE" if unsafe else "BUTTON"])
 				time.sleep(self.SENSOR_DELAY) # Wait
 			data_file.close()
 
@@ -277,13 +269,17 @@ class iRobot(object):
 
 	################################################## Movement ##################################################
 
-	def drive(self, speed=MAX_SPEED / 2.0, radius=STRAIGHT):
+	def drive(self, speed=MAX_SPEED / 5.0, radius=STRAIGHT):
 		'''
 		Wrapper for drive commands, required from project 1
 		'''
-		self.connection.write(pack('>B2h', self.DRIVE, int(speed * 1000), radius))
+		self.lock.acquire()
+		try:
+			self.connection.write(pack('>B2h', self.DRIVE, int(speed * 1000), radius)) # Send drive command
+		finally:
+			self.lock.release()
 
-	def drive_straight(self, distance, speed=MAX_SPEED / 2.0):
+	def drive_straight(self, distance, speed=MAX_SPEED / 5.0):
 		'''
 		Takes a distance in meters and a speed in meters per second and moves the iRobot the intended distance in a straight line
 		'''
@@ -291,7 +287,7 @@ class iRobot(object):
 		t = distance / speed
 		drive_start_time = time.time()
 		self.drive(speed)
-		while (time.time() - drive_start_time < t and self.safe_status()):
+		while (time.time() - drive_start_time < t and self.safe_to_drive() and not self.clean_pressed):
 			continue
 		self.stop_drive()
 
@@ -307,8 +303,8 @@ class iRobot(object):
 			self.drive(speed, self.CW)
 		else:
 			self.drive(speed, self.CCW)
-			drive_start_time = time.time()
-		while (time.time() - drive_start_time < t and self.safe_status()):
+		drive_start_time = time.time()
+		while (time.time() - drive_start_time < abs(t) and self.safe_to_turn()):
 			continue
 		self.stop_drive()
 
@@ -326,8 +322,9 @@ class iRobot(object):
 		'''
 		self.connection.write(pack('>B2h', self.DRIVE_DIRECT, vl, vr)) # Send drive direct command
 		drive_start_time = time.time()
-		while (time.time() - drive_start_time < t and self.safe_status()):
-			continue
+		curr_time = drive_start_time
+		while ((curr_time - drive_start_time < t) and self.safe_to_drive()):
+			curr_time = time.time()
 		self.stop_drive() # Stop iRobot
 
 	################################################## Magic Methods ##################################################
@@ -340,14 +337,35 @@ class iRobot(object):
 		output += '  Right Bumper Pressed: ' + str(self.RB) + '\n'
 		return output
 
-	def safe_status(self):
+	def safe_to_drive(self):
 		return not (self.LWD or self.RWD or self.LB or self.RB or self.cliff_front_left or self.cliff_front_right or self.cliff_left or self.cliff_right)
 
+	def safe_to_turn(self):
+		return not (self.LWD or self.RWD)
+
+	def button_pressed(self):
+		return self.clean_pressed or self.dock_pressed or self.spot_pressed or self.schedule_pressed or self.clock_pressed or self.day_pressed or self.hour_pressed or self.minute_pressed
 ################################################## Main Method ##################################################
 
 if __name__ == "__main__":
-	robot = iRobot()
+	robot = iRobot() # A
+	robot.safe()
 	robot.start()
 	robot.safe()
-	robot.drive_straight(2)
-	robot.stop()
+	while True: # D
+		while robot.safe_to_drive() and robot.clean_pressed: # B
+			while robot.safe_to_drive() and not robot.clean_pressed:
+				print robot
+				robot.drive_straight(float('inf'), robot.MAX_SPEED / 5)
+				while robot.LWD or robot.RWD: # C
+					# Play a warning song here
+					continue
+				if robot.LB and robot.RB:
+					rand_angle = random.uniform(-360.0, 360.0)
+					robot.turn(rand_angle)
+				elif robot.LB:
+					rand_angle = random.uniform(-45.0, 45.0)
+					robot.turn(-180 + rand_angle)
+				elif robot.RB:
+					rand_angle = random.uniform(-45, 45)
+					robot.turn(180 + rand_angle)

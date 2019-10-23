@@ -345,6 +345,17 @@ class iRobot(object):
 
 	def button_pressed(self):
 		return self.clean_pressed or self.dock_pressed or self.spot_pressed or self.schedule_pressed or self.clock_pressed or self.day_pressed or self.hour_pressed or self.minute_pressed
+
+	def play_song(self):
+		song = (chr(59)+chr(16)+chr(55)+chr(16)+chr(60)+chr(16)+chr(55)+chr(16)+,
+			chr(62)+chr(16)+chr(55)+chr(16)+chr(63)+chr(16)+chr(55)+chr(16)+,
+			chr(62)+chr(16)+chr(55)+chr(16)+chr(60)+chr(16)+chr(55)+chr(16)+,
+			chr(40)+chr(8)+chr(41)+chr(8)+chr(42)+chr(8)+chr(43)+chr(16))
+		self.connection.write(chr(140)+chr(0)+chr(16)+song)
+		time.sleep(self.DELAY)
+		self.connection.write(chr(141)+chr(0))
+
+
 ################################################## Main Method ##################################################
 
 if __name__ == "__main__":
@@ -359,10 +370,15 @@ if __name__ == "__main__":
 				robot.drive_straight(float('inf'), robot.MAX_SPEED / 5)
 				while robot.LWD or robot.RWD: # C
 					# Play a warning song here
+					robot.play_song()
 					continue
 				if robot.LB and robot.RB:
-					rand_angle = random.uniform(-360.0, 360.0)
-					robot.turn(rand_angle)
+					rand_angle = random.uniform(-45.0, 45.0)
+					TorF = bool(random.getrandbits(1))
+					if TorF:
+						robot.turn(-180 + rand_angle)
+					else:
+						robot.turn(180 + rand_angle)
 				elif robot.LB:
 					rand_angle = random.uniform(-45.0, 45.0)
 					robot.turn(-180 + rand_angle)

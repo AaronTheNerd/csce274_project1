@@ -347,12 +347,10 @@ class iRobot(object):
 		return self.clean_pressed or self.dock_pressed or self.spot_pressed or self.schedule_pressed or self.clock_pressed or self.day_pressed or self.hour_pressed or self.minute_pressed
 
 	def play_song(self):
-		song = (chr(59)+chr(16)+chr(55)+chr(16)+chr(60)+chr(16)+chr(55)+chr(16)+,
-			chr(62)+chr(16)+chr(55)+chr(16)+chr(63)+chr(16)+chr(55)+chr(16)+,
-			chr(62)+chr(16)+chr(55)+chr(16)+chr(60)+chr(16)+chr(55)+chr(16)+,
-			chr(40)+chr(8)+chr(41)+chr(8)+chr(42)+chr(8)+chr(43)+chr(16))
+		song = chr(59)+chr(16)+chr(55)+chr(16)+chr(60)+chr(16)+chr(55)+chr(16)+chr(62)+chr(16)+chr(55)+chr(16)+chr(63)+chr(16)+chr(55)+chr(16)+chr(62)+chr(16)+chr(55)+chr(16)+chr(60)+chr(16)+chr(55)+chr(16)+chr(40)+chr(8)+chr(41)+chr(8)+chr(42)+chr(8)+chr(43)+chr(16)
 		self.connection.write(chr(140)+chr(0)+chr(16)+song)
 		time.sleep(self.DELAY)
+		print("playing song")
 		self.connection.write(chr(141)+chr(0))
 
 
@@ -362,16 +360,17 @@ if __name__ == "__main__":
 	robot = iRobot() # A
 	robot.safe()
 	robot.start()
-	robot.safe()
+	robot.full()
 	while True: # D
 		while robot.safe_to_drive() and robot.clean_pressed: # B
 			while robot.safe_to_drive() and not robot.clean_pressed:
 				print robot
 				robot.drive_straight(float('inf'), robot.MAX_SPEED / 5)
-				while robot.LWD or robot.RWD: # C
+				if robot.LWD or robot.RWD: # C
 					# Play a warning song here
+					print("wheel dropped")
 					robot.play_song()
-					continue
+					break
 				if robot.LB and robot.RB:
 					rand_angle = random.uniform(-45.0, 45.0)
 					TorF = bool(random.getrandbits(1))

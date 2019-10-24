@@ -1,4 +1,3 @@
-import csv
 import serial
 import threading
 import time
@@ -23,7 +22,7 @@ step (g).
 
 class Connection(object):
 	'''
-	Wrapper class for serial.Serial
+	Wrapper class for serial connection
 	'''
 	DELAY = 0.025
 	def __init__(self):
@@ -78,7 +77,7 @@ class Button(object):
 		self.pressed = False
 		self.released = False
 
-	def update(self, new_state):
+	def update_button(self, new_state):
 		'''
 		Takes a new state and finds if the button is being pressed or has been released
 		'''
@@ -142,6 +141,7 @@ class iRobot(object):
 	STRAIGHT = 32767
 	CCW = 1
 	CW = -1
+	BUTTON_INTERRUPT = NameError('Button Pressed')
 
 	def __init__(self):
 		'''
@@ -164,7 +164,7 @@ class iRobot(object):
 		self.schedule = Button()
 		self.day = Button()
 		self.hour = Button()
-		self.minute = Button
+		self.minute = Button()
 		self.dock = Button()
 		self.spot = Button()
 		self.clean = Button()
@@ -215,24 +215,15 @@ class iRobot(object):
 		num_of_bytes = num_of_packets # Define expected number of bytes without Header, n-bytes, and checksum
 		for i in range(len(self.PACKETS)):
 			num_of_bytes += self.PACKETS[i].bytes
-		
-		with open('data.csv', 'w+') as data_file: # Open file
-			data_writer = csv.writer(data_file, delimiter=',', quoting=csv.QUOTE_NONE) # Open writer
-			com = chr(self.READ_SENSORS) + chr(num_of_packets) # Create command
-			for i in range(len(self.PACKETS)):
-				com += chr(self.PACKETS[i].id)
-			self.connection.send(self.com) # Send sensor command
-			while True: # Read data while running
-				raw_data = self.connection.receive(num_of_bytes + 3)
-				raw_data = iRobot.unwrap(raw_data, chr(19), chr(num_of_bytes)) # Grab raw data and 'unwrap'
-				data = unpack(self.SENSOR_READ_FORMAT, raw_data)[2:-1] # Unpack without header, n-bytes, and checksum
-				self.parse_data(data) # Parse Data
-				button_pressed = self.button_pressed()
-				unsafe = not self.safe_to_drive()
-				if button_pressed or unsafe:
-					data_writer.writerow(["<" + str(round(time.time() - self.start_time, 3)) + ">", self.distance, self.angle, "UNSAFE" if unsafe else "BUTTON"])
-				time.sleep(self.SENSOR_DELAY) # Wait
-			data_file.close()
+		com = chr(self.READ_SENSORS) + chr(num_of_packets) # Create command
+		for i in range(len(self.PACKETS)):
+			com += chr(self.PACKETS[i].id)
+		self.connection.send(com) # Send sensor command
+		while True: # Read data while running
+			raw_data = self.connection.receive(num_of_bytes + 3)
+			raw_data = iRobot.unwrap(raw_data, chr(19), chr(num_of_bytes)) # Grab raw data and 'unwrap'
+			data = unpack(self.SENSOR_READ_FORMAT, raw_data)[2:-1] # Unpack without header, n-bytes, and checksum
+			self.parse_data(data) # Parse Data
 
 	@staticmethod
 	def unwrap(raw_data, v1, v2):
@@ -286,14 +277,14 @@ class iRobot(object):
 		'''
 		Takes the byte that represents Buttons and decodes it
 		'''
-		self.clock.update(bool(data & 128))
-		self.schedule.update(bool(data & 64))
-		self.day.update(bool(data & 32))
-		self.hour.update(bool(data & 16))
-		self.minute.update(bool(data & 8))
-		self.dock.update(bool(data & 4))
-		self.spot.update(bool(data & 2))
-		self.clean.update(bool(data & 1))
+		self.clock.update_button(bool(data & 128))
+		self.schedule.update_button(bool(data & 64))
+		self.day.update_button(bool(data & 32))
+		self.hour.update_button(bool(data & 16))
+		self.minute.update_button(bool(data & 8))
+		self.dock.update_button(bool(data & 4))
+		self.spot.update_button(bool(data & 2))
+		self.clean.update_button(bool(data & 1))
 
 	################################################## Movement ##################################################
 
@@ -315,7 +306,7 @@ class iRobot(object):
 			continue
 		self.stop_drive() # Send stop driving command
 		if self.clean.pressed:
-			raise NameError('Button Pressed')
+			raise self.BUTTON_INTERRUPT
 
 	def turn(self, angle, speed=MAX_SPEED / 5.0):
 		'''
@@ -334,7 +325,7 @@ class iRobot(object):
 			continue
 		self.stop_drive() # Stop turning
 		if self.clean.pressed:
-			raise NameError('Button Pressed')
+			raise self.BUTTON_INTERRUPT
 
 	def stop_drive(self):
 		'''
@@ -383,6 +374,16 @@ class iRobot(object):
 		Returns a boolean that represents whether or not the iRobot has had a button pressed
 		'''
 		return self.clean.pressed or self.dock.pressed or self.spot.pressed or self.schedule.pressed or self.clock.pressed or self.day.pressed or self.hour.pressed or self.minute.pressed
+
+	def play_song(self):
+		'''
+		Creates and plays a song
+		'''
+		song = chr(59)+chr(16)+chr(55)+chr(16)+chr(60)+chr(16)+chr(55)+chr(16)+chr(62)+chr(16)+chr(55)+chr(16)+chr(63)+chr(16)+chr(55)+chr(16)+chr(62)+chr(16)+chr(55)+chr(16)+chr(60)+chr(16)+chr(55)+chr(16)+chr(40)+chr(8)+chr(41)+chr(8)+chr(42)+chr(8)+chr(43)+chr(16)
+		self.connection.send(chr(140)+chr(0)+chr(16)+song)
+		print("playing song")
+		self.connection.send(chr(141)+chr(0))
+
 ################################################## Main Method ##################################################
 
 if __name__ == "__main__":
@@ -394,13 +395,13 @@ if __name__ == "__main__":
 			while True: # B
 				try:
 					robot.drive_straight(float('inf'), robot.MAX_SPEED / 5)
-				except NameError('Button Pressed'):
+				except:
 					while robot.clean.pressed:
 						continue
 					robot.clean.reset()
 					break
 				if robot.LWD or robot.RWD: # C
-					# Play a warning song
+					robot.play_song()
 					break
 				try:
 					if robot.LB and robot.RB:
@@ -412,7 +413,7 @@ if __name__ == "__main__":
 					elif robot.RB:
 						rand_angle = random.uniform(-45, 45)
 						robot.turn(180 + rand_angle)
-				except NameError('Button Pressed'):
+				except:
 					while robot.clean.pressed:
 						continue
 					robot.clean.reset()

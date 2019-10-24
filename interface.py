@@ -391,7 +391,7 @@ if __name__ == "__main__":
 	robot.start()
 	robot.full()
 	while True: # D
-		if robot.safe_to_drive() and robot.clean.released:
+		if robot.safe_to_turn() and robot.clean.released:
 			while True: # B
 				try:
 					robot.drive_straight(float('inf'), robot.MAX_SPEED / 5)

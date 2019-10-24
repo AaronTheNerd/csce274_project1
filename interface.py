@@ -21,6 +21,43 @@ from the robot code and should be executed on your laptop by reading the log fil
 step (g).
 '''
 
+class Connection(object):
+	'''
+	Wrapper class for serial.Serial
+	'''
+	DELAY = 0.025
+	def __init__(self):
+		'''
+		Establish connection immdeiately upon being called
+		'''
+		self.connection = serial.Serial(port='/dev/ttyUSB0', baudrate=115200)
+		self.lock = threading.Lock()
+		time.sleep(self.DELAY)
+  
+	def send(self, data, delay=True):
+		'''
+		This takes an input string data, and sends it to the iRobot
+		'''
+		self.lock.acquire()
+		try:
+			self.connection.write(data)
+		finally:
+			if delay:
+				time.sleep(self.DELAY)
+			self.lock.release()
+  
+	def receive(self, n):
+		'''
+		This sends the command to read n number of bytes from iRobot
+		'''
+		return self.connection.read(n)
+
+	def close(self):
+		'''
+		Closes connection to iRobot
+		'''
+		self.connection.close()
+
 class Packet(object):
 	'''
 	A class that helps organize packets
@@ -29,6 +66,31 @@ class Packet(object):
 		self.id = _id
 		self.bytes = _bytes
 		self.unpack = _unpack
+
+class Button(object):
+	'''
+	A class to make better button responses
+	'''
+	def __init__(self):
+		'''
+		Creates a button
+		'''
+		self.pressed = False
+		self.released = False
+
+	def update(self, new_state):
+		'''
+		Takes a new state and finds if the button is being pressed or has been released
+		'''
+		self.released = True if self.pressed == True and new_state == False else False
+		self.pressed = new_state
+
+	def reset(self):
+		'''
+		Resets the button
+		'''
+		self.pressed = False
+		self.released = False
 
 class iRobot(object):
 	'''
@@ -73,7 +135,6 @@ class iRobot(object):
 	SENSOR_READ_FORMAT += 'B'
 
 	# Variables
-	DELAY = 0.25 # s
 	SENSOR_DELAY = 0.010 # s
 	MAX_SPEED = 0.5 # m/s
 	DIAMETER = 0.235 # m
@@ -82,19 +143,13 @@ class iRobot(object):
 	CCW = 1
 	CW = -1
 
-	# States
-	RUNNING = True
-	MOVING = False
-
 	def __init__(self):
 		'''
 		Establishes connection to the iRobot and creates a thread for data reading
 		'''
-		self.connection = serial.Serial('/dev/ttyUSB0', baudrate=115200) # Establish connection
-		time.sleep(self.DELAY) # Wait
+		self.connection = Connection() # Establish connection
 		self.data_thread = threading.Thread(target=self.read_data) # Create a thread to read data
 		self.data_thread.daemon = True
-		self.lock = threading.Lock()
 
 		self.LWD = False
 		self.RWD = False
@@ -105,14 +160,14 @@ class iRobot(object):
 		self.cliff_front_right = False
 		self.cliff_right = False
 		self.virtual_wall = False
-		self.clock_pressed = False
-		self.schedule_pressed = False
-		self.day_pressed = False
-		self.hour_pressed = False
-		self.minute_pressed = False
-		self.dock_pressed = False
-		self.spot_pressed = False
-		self.clean_pressed = False
+		self.clock = Button()
+		self.schedule = Button()
+		self.day = Button()
+		self.hour = Button()
+		self.minute = Button
+		self.dock = Button()
+		self.spot = Button()
+		self.clean = Button()
 		self.distance = 0
 		self.angle = 0
 
@@ -122,12 +177,7 @@ class iRobot(object):
 		'''
 		Starts the iRobot and starts the data reading thread
 		'''
-		self.lock.acquire()
-		try:
-			self.connection.write(self.START) # Send start command
-			time.sleep(self.DELAY) # Wait
-		finally:
-			self.lock.release()
+		self.connection.send(self.START) # Send start command
 		self.data_thread.start() # Start data thread
 		self.start_time = time.time()
 
@@ -135,45 +185,25 @@ class iRobot(object):
 		'''
 		Resets the iRobot
 		'''
-		self.lock.acquire()
-		try:
-			self.connection.write(self.RESET) # Send reset command
-			time.sleep(self.DELAY) # Wait
-		finally:
-			self.lock.release()
+		self.connection.send(self.RESET) # Send reset command
 
 	def stop(self):
 		'''
 		Stops the iRobot
 		'''
-		self.lock.acquire()
-		try:
-			self.connection.write(self.STOP) # Send stop command
-			time.sleep(self.DELAY) # Wait
-		finally:
-			self.lock.release()
+		self.connection.send(self.STOP) # Send reset command
 
 	def safe(self):
 		'''
 		Sets the iRobot into safe mode
 		'''
-		self.lock.acquire()
-		try:
-			self.connection.write(self.SAFE) # Send safe command
-			time.sleep(self.DELAY) # Wait
-		finally:
-			self.lock.release()
+		self.connection.send(self.SAFE) # Send reset command
 
 	def full(self):
 		'''
 		Sets the iRobot into full mode
 		'''
-		self.lock.acquire()
-		try:
-			self.connection.write(self.FULL) # Send full command
-			time.sleep(self.DELAY) # Wait
-		finally:
-			self.lock.release()
+		self.connection.send(self.FULL) # Send reset command
 
 	################################################## Sensor Reading ##################################################
 
@@ -188,17 +218,12 @@ class iRobot(object):
 		
 		with open('data.csv', 'w+') as data_file: # Open file
 			data_writer = csv.writer(data_file, delimiter=',', quoting=csv.QUOTE_NONE) # Open writer
-			com = chr(self.READ_SENSORS) + chr(num_of_packets) # Pack
+			com = chr(self.READ_SENSORS) + chr(num_of_packets) # Create command
 			for i in range(len(self.PACKETS)):
 				com += chr(self.PACKETS[i].id)
-			self.lock.acquire()
-			try:
-				self.connection.write(com) # Send sensor command
-				time.sleep(self.DELAY) # Wait
-			finally:
-				self.lock.release()
+			self.connection.send(self.com) # Send sensor command
 			while True: # Read data while running
-				raw_data = self.connection.read(num_of_bytes + 3)
+				raw_data = self.connection.receive(num_of_bytes + 3)
 				raw_data = iRobot.unwrap(raw_data, chr(19), chr(num_of_bytes)) # Grab raw data and 'unwrap'
 				data = unpack(self.SENSOR_READ_FORMAT, raw_data)[2:-1] # Unpack without header, n-bytes, and checksum
 				self.parse_data(data) # Parse Data
@@ -211,6 +236,9 @@ class iRobot(object):
 
 	@staticmethod
 	def unwrap(raw_data, v1, v2):
+		'''
+		Assumes that a list is circular and forces v1 and v2 to be the first 2 values
+		'''
 		ret_list = raw_data
 		for index in range(len(raw_data)):
 			if raw_data[index] == v1 and raw_data[(index + 1) % len(raw_data)] == v2:
@@ -258,79 +286,80 @@ class iRobot(object):
 		'''
 		Takes the byte that represents Buttons and decodes it
 		'''
-		self.clock_pressed = bool(data & 128)
-		self.schedule_pressed = bool(data & 64)
-		self.day_pressed = bool(data & 32)
-		self.hour_pressed = bool(data & 16)
-		self.minute_pressed = bool(data & 8)
-		self.dock_pressed = bool(data & 4)
-		self.spot_pressed = bool(data & 2)
-		self.clean_pressed = bool(data & 1)
+		self.clock.update(bool(data & 128))
+		self.schedule.update(bool(data & 64))
+		self.day.update(bool(data & 32))
+		self.hour.update(bool(data & 16))
+		self.minute.update(bool(data & 8))
+		self.dock.update(bool(data & 4))
+		self.spot.update(bool(data & 2))
+		self.clean.update(bool(data & 1))
 
 	################################################## Movement ##################################################
 
-	def drive(self, speed=MAX_SPEED / 5.0, radius=STRAIGHT):
+	def drive(self, speed=MAX_SPEED / 5.0, radius=STRAIGHT, delay=False):
 		'''
 		Wrapper for drive commands, required from project 1
 		'''
-		self.lock.acquire()
-		try:
-			self.connection.write(pack('>B2h', self.DRIVE, int(speed * 1000), radius)) # Send drive command
-		finally:
-			self.lock.release()
+		self.connection.send(pack('>B2h', self.DRIVE, int(speed * 1000), radius), delay=delay)
 
 	def drive_straight(self, distance, speed=MAX_SPEED / 5.0):
 		'''
 		Takes a distance in meters and a speed in meters per second and moves the iRobot the intended distance in a straight line
 		'''
-		speed = self.MAX_SPEED if speed > self.MAX_SPEED else speed
-		t = distance / speed
-		drive_start_time = time.time()
-		self.drive(speed)
-		while (time.time() - drive_start_time < t and self.safe_to_drive() and not self.clean_pressed):
+		speed = self.MAX_SPEED if speed > self.MAX_SPEED else -self.MAX_SPEED if speed < -self.MAX_SPEED else speed # Makes sure that the speed isn't too high or too low
+		t = distance / speed # Solve for t
+		drive_start_time = time.time() # Keep track of start time
+		self.drive(speed) # Send drive command
+		while (time.time() - drive_start_time < t and self.safe_to_drive() and not self.clean.pressed): # Make sure the iRobot is safe to drive and hasn't driven too far
 			continue
-		self.stop_drive()
+		self.stop_drive() # Send stop driving command
+		if self.clean.pressed:
+			raise NameError('Button Pressed')
 
 	def turn(self, angle, speed=MAX_SPEED / 5.0):
 		'''
 		Takes an angle in degrees and a speed in meters per second to rotate the iRobot in place
 		If angle is positive then the iRobot will turn counter clockwise
 		'''
-		speed = self.MAX_SPEED if speed > self.MAX_SPEED else abs(speed)
-		deg_per_sec = speed * 180.0 / (self.RADIUS * math.pi)
-		t = angle / deg_per_sec
-		if angle < 0:
+		speed = self.MAX_SPEED if speed > self.MAX_SPEED else -self.MAX_SPEED if speed < -self.MAX_SPEED else speed # Makes sure that the speed isnt too fast
+		deg_per_sec = speed * 180.0 / (self.RADIUS * math.pi) # Find degrees per second
+		t = angle / deg_per_sec # Solve for t
+		if angle < 0: # Figure out which way to rotate
 			self.drive(speed, self.CW)
 		else:
 			self.drive(speed, self.CCW)
-		drive_start_time = time.time()
-		while (time.time() - drive_start_time < abs(t) and self.safe_to_turn()):
+		drive_start_time = time.time() # Keep track of start time
+		while (time.time() - drive_start_time < abs(t) and self.safe_to_turn() and not self.clean.pressed): # Make sure the iRobot is safe to turn and hasn't turned for too long
 			continue
-		self.stop_drive()
+		self.stop_drive() # Stop turning
+		if self.clean.pressed:
+			raise NameError('Button Pressed')
 
 	def stop_drive(self):
 		'''
 		Stops the iRobot's wheels
 		'''
-		self.drive(0, 0)
-		time.sleep(self.DELAY)
+		self.drive(0, 0, delay=True) # Sends stop command with delay
 
 	def drive_direct(self, t, vl, vr):
 		'''
 		Takes a time in seconds and 2 velocities in mm/s
 		These represent the left and right wheel velocities
 		'''
-		self.connection.write(pack('>B2h', self.DRIVE_DIRECT, vl, vr)) # Send drive direct command
-		drive_start_time = time.time()
-		curr_time = drive_start_time
-		while ((curr_time - drive_start_time < t) and self.safe_to_drive()):
-			curr_time = time.time()
+		self.connection.send(pack('>B2h', self.DRIVE_DIRECT, vl, vr), delay=False) # Send drive direct command
+		drive_start_time = time.time() # Keep track of when the iRobot started driving
+		while ((time.time() - drive_start_time < t) and self.safe_to_drive()): # While can drive and hasn't driven for 't' seconds
+			continue
 		self.stop_drive() # Stop iRobot
 
 	################################################## Magic Methods ##################################################
 	def __str__(self):
+		'''
+		Creates a string that shows the iRobot's current runtime, and other data
+		'''
 		output = '<' + str(time.time() - self.start_time) + '>'
-		output += '  Clean Button Pressed: ' + str(self.clean_pressed) + '\n'
+		output += '  Clean Button Pressed: ' + str(self.clean.pressed) + '\n'
 		output += '  Distance: ' + str(self.distance) + '\n'
 		output += '  Angle: ' + str(self.angle) + '\n'
 		output += '  Left Bumper Pressed: ' + str(self.LB) + '\n'
@@ -338,34 +367,53 @@ class iRobot(object):
 		return output
 
 	def safe_to_drive(self):
+		'''
+		Returns a boolean that represents whether or not the iRobot is safe to drive
+		'''
 		return not (self.LWD or self.RWD or self.LB or self.RB or self.cliff_front_left or self.cliff_front_right or self.cliff_left or self.cliff_right)
 
 	def safe_to_turn(self):
+		'''
+		Returns a boolean that represents whether or not the iRobot is safe to rotate
+		'''
 		return not (self.LWD or self.RWD)
 
 	def button_pressed(self):
-		return self.clean_pressed or self.dock_pressed or self.spot_pressed or self.schedule_pressed or self.clock_pressed or self.day_pressed or self.hour_pressed or self.minute_pressed
+		'''
+		Returns a boolean that represents whether or not the iRobot has had a button pressed
+		'''
+		return self.clean.pressed or self.dock.pressed or self.spot.pressed or self.schedule.pressed or self.clock.pressed or self.day.pressed or self.hour.pressed or self.minute.pressed
 ################################################## Main Method ##################################################
 
 if __name__ == "__main__":
 	robot = iRobot() # A
-	robot.safe()
 	robot.start()
-	robot.safe()
+	robot.full()
 	while True: # D
-		while robot.safe_to_drive() and robot.clean_pressed: # B
-			while robot.safe_to_drive() and not robot.clean_pressed:
-				print robot
-				robot.drive_straight(float('inf'), robot.MAX_SPEED / 5)
-				while robot.LWD or robot.RWD: # C
-					# Play a warning song here
-					continue
-				if robot.LB and robot.RB:
-					rand_angle = random.uniform(-360.0, 360.0)
-					robot.turn(rand_angle)
-				elif robot.LB:
-					rand_angle = random.uniform(-45.0, 45.0)
-					robot.turn(-180 + rand_angle)
-				elif robot.RB:
-					rand_angle = random.uniform(-45, 45)
-					robot.turn(180 + rand_angle)
+		if robot.safe_to_drive() and robot.clean.released:
+			while True: # B
+				try:
+					robot.drive_straight(float('inf'), robot.MAX_SPEED / 5)
+				except NameError('Button Pressed'):
+					while robot.clean.pressed:
+						continue
+					robot.clean.reset()
+					break
+				if robot.LWD or robot.RWD: # C
+					# Play a warning song
+					break
+				try:
+					if robot.LB and robot.RB:
+						rand_angle = random.uniform(-360.0, 360.0)
+						robot.turn(rand_angle)
+					elif robot.LB:
+						rand_angle = random.uniform(-45.0, 45.0)
+						robot.turn(-180 + rand_angle)
+					elif robot.RB:
+						rand_angle = random.uniform(-45, 45)
+						robot.turn(180 + rand_angle)
+				except NameError('Button Pressed'):
+					while robot.clean.pressed:
+						continue
+					robot.clean.reset()
+					break

@@ -411,7 +411,7 @@ if __name__ == "__main__":
 						rand_angle = random.uniform(-45.0, 45.0)
 						robot.turn(-180 + rand_angle)
 					elif robot.RB:
-						rand_angle = random.uniform(-45, 45)
+						rand_angle = random.uniform(-45.0, 45.0)
 						robot.turn(180 + rand_angle)
 				except:
 					while robot.clean.pressed:

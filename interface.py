@@ -4,9 +4,10 @@ import time
 import math
 from struct import pack, unpack
 import random
+import csv
 '''
-	Task 1 f. Play a warning song. TODO
-	Task 2 f. Once you are confident enough, you can activate the Full mode. TODO
+	Task 1 f. Play a warning song.
+	Task 2 f. Once you are confident enough, you can activate the Full mode. 
 	h. [Extra Credit] Use threads to manage the motion of the robot and the reading of the TODO
 	sensors. Remember that the connection is a shared resource among the different
 	threads, as such you should use a way to synchronize the threads, e.g., Lock
@@ -257,9 +258,10 @@ class iRobot(object):
 			elif data[i] == self.BUTTONS.id:
 				self.decodeB(data[i + 1])
 			elif data[i] == self.DISTANCE.id:
-				self.distance = data[i + 1]
+				self.distance += data[i + 1]
 			elif data[i] == self.ANGLE.id:
-				self.angle = data[i + 1]
+				self.angle += data[i + 1]
+				self.angle %= 360
 			else:
 				print "Unknown ID found"
 				break
@@ -387,6 +389,8 @@ class iRobot(object):
 ################################################## Main Method ##################################################
 
 if __name__ == "__main__":
+	data_file = csv.open('data.csv', 'w+')
+	data_writer = csv.writer(data_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
 	robot = iRobot() # A
 	robot.start()
 	robot.full()
@@ -398,14 +402,16 @@ if __name__ == "__main__":
 				except:
 					while robot.clean.pressed:
 						continue
+					data_writer.writerow([time.time() - robot.start_time, robot.distance, robot.angle, 'BUTTON'])
 					robot.clean.reset()
 					break
 				if robot.LWD or robot.RWD: # C
 					robot.play_song()
+					data_writer.writerow([time.time() - robot.start_time, robot.distance, robot.angle, 'UNSAFE'])
 					break
 				try:
 					if robot.LB and robot.RB:
-						rand_angle = random.uniform(-360.0, 360.0)
+						rand_angle = random.uniform(-180.0, 180.0)
 						robot.turn(rand_angle)
 					elif robot.LB:
 						rand_angle = random.uniform(-45.0, 45.0)
@@ -413,8 +419,13 @@ if __name__ == "__main__":
 					elif robot.RB:
 						rand_angle = random.uniform(-45.0, 45.0)
 						robot.turn(180 + rand_angle)
+					else:
+						rand_angle = random.uniform(-180, 180)
+						robot.turn(rand_angle)
+					data_writer.writerow([time.time() - robot.start_time, robot.distance, robot.angle, 'UNSAFE'])
 				except:
 					while robot.clean.pressed:
 						continue
+					data_writer.writerow([time.time() - robot.start_time, robot.distance, robot.angle, 'BUTTON'])
 					robot.clean.reset()
 					break

@@ -3,23 +3,6 @@ import threading
 import time
 import math
 from struct import pack, unpack
-import random
-import csv
-'''
-	Task 1 f. Play a warning song.
-	Task 2 f. Once you are confident enough, you can activate the Full mode. 
-	h. [Extra Credit] Use threads to manage the motion of the robot and the reading of the TODO
-	sensors. Remember that the connection is a shared resource among the different
-	threads, as such you should use a way to synchronize the threads, e.g., Lock
-	(https://docs.python.org/2/library/threading.html#lock-objects), as suggested in the
-	Notes on the iRobot Create 2.
-Task 3. [Extra Credit] Process the log file in order to plot the position of the robot in a 2D graph, TODO
-e.g., using matplotlib (http://matplotlib.org/users/pyplot_tutorial.html). To plot the position of
-the robot correctly, remember that the Create 2 is a differential drive robot and that the motion
-you perform are forward motion and rotation in place. Note that this code should be separate
-from the robot code and should be executed on your laptop by reading the log file created in
-step (g).
-'''
 
 class Connection(object):
 	'''
@@ -119,15 +102,10 @@ class iRobot(object):
 	BUTTONS = Packet(18, 1, 'BB')
 	DISTANCE = Packet(19, 2, 'Bh')
 	ANGLE = Packet(20, 2, 'Bh')
-	PACKETS = [WHEEL_DROP_AND_BUMPERS,
-			   CLIFF_LEFT,
-			   CLIFF_FRONT_LEFT,
-			   CLIFF_FRONT_RIGHT,
-			   CLIFF_RIGHT,
-			   VIRTUAL_WALL,
-			   BUTTONS,
-			   DISTANCE,
-			   ANGLE]
+	LIGHT_BUMP_LEFT = Packet(46, 2, 'BH')
+	LIGHT_BUMP_RIGHT = Packet(51, 2, 'BH')
+	PACKETS = [BUTTONS,
+						 LIGHT_BUMP_RIGHT]
 
 	SENSOR_READ_FORMAT = '>BB'
 	for index in range(len(PACKETS)):
@@ -135,7 +113,7 @@ class iRobot(object):
 	SENSOR_READ_FORMAT += 'B'
 
 	# Variables
-	SENSOR_DELAY = 0.010 # s
+	SENSOR_DELAY = 0.020 # s
 	MAX_SPEED = 0.5 # m/s
 	DIAMETER = 0.235 # m
 	RADIUS = DIAMETER / 2.0 # m
@@ -152,10 +130,10 @@ class iRobot(object):
 		self.data_thread = threading.Thread(target=self.read_data) # Create a thread to read data
 		self.data_thread.daemon = True
 
-		self.LWD = False
-		self.RWD = False
-		self.LB = False
-		self.RB = False
+		self.LWD = False # Left wheel drop
+		self.RWD = False # Right wheel drop
+		self.LB = False # Left bumper
+		self.RB = False # Right bumper
 		self.cliff_left = False
 		self.cliff_front_left = False
 		self.cliff_front_right = False
@@ -171,6 +149,8 @@ class iRobot(object):
 		self.clean = Button()
 		self.distance = 0
 		self.angle = 0
+		self.IR_BR = 0 # Infrared right sensor
+		self.IR_BL = 0 # Infrared left sensor
 
 	################################################## OI Mode and Starting ##################################################
 
@@ -223,6 +203,8 @@ class iRobot(object):
 		while True: # Read data while running
 			raw_data = self.connection.receive(num_of_bytes + 3)
 			raw_data = iRobot.unwrap(raw_data, chr(19), chr(num_of_bytes)) # Grab raw data and 'unwrap'
+			if len(raw_data) < (2 * num_of_packets):
+				continue
 			data = unpack(self.SENSOR_READ_FORMAT, raw_data)[2:-1] # Unpack without header, n-bytes, and checksum
 			self.parse_data(data) # Parse Data
 
@@ -231,7 +213,7 @@ class iRobot(object):
 		'''
 		Assumes that a list is circular and forces v1 and v2 to be the first 2 values
 		'''
-		ret_list = raw_data
+		ret_list = []
 		for index in range(len(raw_data)):
 			if raw_data[index] == v1 and raw_data[(index + 1) % len(raw_data)] == v2:
 				ret_list = ''.join([raw_data[(i + index) % len(raw_data)] for i in range(len(raw_data))])
@@ -242,6 +224,8 @@ class iRobot(object):
 		'''
 		Decodes all unpacked data
 		'''
+		if data == []:
+			return
 		for i in range(0, len(data), 2):
 			if data[i] == self.WHEEL_DROP_AND_BUMPERS.id:
 				self.decodeWDAB(data[i + 1])
@@ -262,6 +246,12 @@ class iRobot(object):
 			elif data[i] == self.ANGLE.id:
 				self.angle += data[i + 1]
 				self.angle %= 360
+			elif data[i] == self.LIGHT_BUMP_RIGHT.id:
+				self.IR_BR = data[i + 1]
+			elif data[i] == self.LIGHT_BUMP_LEFT.id:
+				self.IR_BL = data[i + 1]
+			elif data[i] == self.WALL.id:
+				self.wall = data[i + 1]
 			else:
 				print "Unknown ID found"
 				break
@@ -389,43 +379,14 @@ class iRobot(object):
 ################################################## Main Method ##################################################
 
 if __name__ == "__main__":
-	data_file = csv.open('data.csv', 'w+')
-	data_writer = csv.writer(data_file, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
-	robot = iRobot() # A
+	Kp = 1 # Arbitrary proprtional gain
+	Kd = 1 # Arbitrary derivative gain
+	e_prev = 0 # Previous error
+	e_curr = 0 # Current error
+	set_point = 200 # Arbitrary set point
+	e = lambda e_prev_, e_curr_: (Kp * e_curr_) + (Kd * (e_curr_ - e_prev_)/iRobot.SENSOR_DELAY)
+	robot = iRobot()
 	robot.start()
-	robot.full()
-	while True: # D
-		if robot.safe_to_turn() and robot.clean.released:
-			while True: # B
-				try:
-					robot.drive_straight(float('inf'), robot.MAX_SPEED / 5)
-				except:
-					while robot.clean.pressed:
-						continue
-					data_writer.writerow([time.time() - robot.start_time, robot.distance, robot.angle, 'BUTTON'])
-					robot.clean.reset()
-					break
-				if robot.LWD or robot.RWD: # C
-					robot.play_song()
-					data_writer.writerow([time.time() - robot.start_time, robot.distance, robot.angle, 'UNSAFE'])
-					break
-				try:
-					if robot.LB and robot.RB:
-						rand_angle = random.uniform(-180.0, 180.0)
-						robot.turn(rand_angle)
-					elif robot.LB:
-						rand_angle = random.uniform(-45.0, 45.0)
-						robot.turn(-180 + rand_angle)
-					elif robot.RB:
-						rand_angle = random.uniform(-45.0, 45.0)
-						robot.turn(180 + rand_angle)
-					else:
-						rand_angle = random.uniform(-180, 180)
-						robot.turn(rand_angle)
-					data_writer.writerow([time.time() - robot.start_time, robot.distance, robot.angle, 'UNSAFE'])
-				except:
-					while robot.clean.pressed:
-						continue
-					data_writer.writerow([time.time() - robot.start_time, robot.distance, robot.angle, 'BUTTON'])
-					robot.clean.reset()
-					break
+	robot.safe()
+	while True:
+		

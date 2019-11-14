@@ -8,7 +8,7 @@ class Connection(object):
 	'''
 	Wrapper class for serial connection
 	'''
-	DELAY = 0.025
+	DELAY = 0.015
 	def __init__(self):
 		'''
 		Establish connection immdeiately upon being called
@@ -379,14 +379,29 @@ class iRobot(object):
 ################################################## Main Method ##################################################
 
 if __name__ == "__main__":
-	Kp = 1 # Arbitrary proprtional gain
-	Kd = 1 # Arbitrary derivative gain
-	e_prev = 0 # Previous error
-	e_curr = 0 # Current error
-	set_point = 200 # Arbitrary set point
-	e = lambda e_prev_, e_curr_: (Kp * e_curr_) + (Kd * (e_curr_ - e_prev_)/iRobot.SENSOR_DELAY)
+	Kp = 0.01 # Arbitrary proprtional gain
+	Kd = 0.30 # Arbitrary derivative gain
+	set_point = 800 # Arbitrary set point                          (straight) to (rotate in place)
+	delay = 0.25
+	error = lambda e_prev_, e_curr_: (Kp * e_curr_) + (Kd * (e_curr_ - e_prev_) / delay)
 	robot = iRobot()
 	robot.start()
 	robot.safe()
+	time.sleep(0.01)
+	e_prev = set_point - robot.IR_BR # Previous error
+	e_curr = e_prev # Current error
+	e_prev, e_curr = e_curr, set_point - robot.IR_BR
+	e_val = error(e_prev, e_curr)
 	while True:
-		
+		print "		Distance from Wall", robot.IR_BR
+		e_prev, e_curr = e_curr, set_point - robot.IR_BR
+		e_val = error(e_prev, e_curr)
+		try:
+			if e_val < -15:
+				e_val = -15
+			print "Error:", e_val
+			robot.drive(iRobot.MAX_SPEED / 10, e_val)
+		except: # Button pressed
+			continue
+		time.sleep(delay)
+

@@ -102,9 +102,11 @@ class iRobot(object):
 	BUTTONS = Packet(18, 1, 'BB')
 	DISTANCE = Packet(19, 2, 'Bh')
 	ANGLE = Packet(20, 2, 'Bh')
-	LIGHT_BUMP_LEFT = Packet(46, 2, 'BH')
+	LIGHT_BUMPERS = Packet(45, 1, 'BB')
 	LIGHT_BUMP_RIGHT = Packet(51, 2, 'BH')
 	PACKETS = [BUTTONS,
+						 WHEEL_DROP_AND_BUMPERS,
+						 LIGHT_BUMPERS,
 						 LIGHT_BUMP_RIGHT]
 
 	SENSOR_READ_FORMAT = '>BB'
@@ -151,6 +153,12 @@ class iRobot(object):
 		self.angle = 0
 		self.IR_BR = 0 # Infrared right sensor
 		self.IR_BL = 0 # Infrared left sensor
+		self.LT_BR = False # Light bump right
+		self.LT_BFR = False # Light bump front right
+		self.LT_BCR = False # Light bump center right
+		self.LT_BCL = False # Light bump center left
+		self.LT_BFL = False # Light bump front left
+		self.LT_BL = False # Light bump left
 
 	################################################## OI Mode and Starting ##################################################
 
@@ -248,10 +256,8 @@ class iRobot(object):
 				self.angle %= 360
 			elif data[i] == self.LIGHT_BUMP_RIGHT.id:
 				self.IR_BR = data[i + 1]
-			elif data[i] == self.LIGHT_BUMP_LEFT.id:
-				self.IR_BL = data[i + 1]
-			elif data[i] == self.WALL.id:
-				self.wall = data[i + 1]
+			elif data[i] == self.LIGHT_BUMPERS.id:
+				self.decodeLTBS(data[i + 1])
 			else:
 				print "Unknown ID found"
 				break
@@ -278,6 +284,17 @@ class iRobot(object):
 		self.spot.update_button(bool(data & 2))
 		self.clean.update_button(bool(data & 1))
 
+	def decodeLTBS(self, data):
+		'''
+
+		'''
+		self.LT_BR = bool(data & 32)
+		self.LT_BFR = bool(data & 16)
+		self.LT_BCR = bool(data & 8)
+		self.LT_BCL = bool(data & 4)
+		self.LT_BFL = bool(data & 2)
+		self.LT_BL = bool(data & 1)
+
 	################################################## Movement ##################################################
 
 	def drive(self, speed=MAX_SPEED / 5.0, radius=STRAIGHT, delay=False):
@@ -285,6 +302,8 @@ class iRobot(object):
 		Wrapper for drive commands, required from project 1
 		'''
 		self.connection.send(pack('>B2h', self.DRIVE, int(speed * 1000), radius), delay=delay)
+		if self.clean.pressed:
+			raise self.BUTTON_INTERRUPT
 
 	def drive_straight(self, distance, speed=MAX_SPEED / 5.0):
 		'''
@@ -371,37 +390,72 @@ class iRobot(object):
 		'''
 		Creates and plays a song
 		'''
-		song = chr(59)+chr(16)+chr(55)+chr(16)+chr(60)+chr(16)+chr(55)+chr(16)+chr(62)+chr(16)+chr(55)+chr(16)+chr(63)+chr(16)+chr(55)+chr(16)+chr(62)+chr(16)+chr(55)+chr(16)+chr(60)+chr(16)+chr(55)+chr(16)+chr(40)+chr(8)+chr(41)+chr(8)+chr(42)+chr(8)+chr(43)+chr(16)
-		self.connection.send(chr(140)+chr(0)+chr(16)+song)
-		print("playing song")
-		self.connection.send(chr(141)+chr(0))
+		song = chr(59) + chr(16) + chr(55) + chr(16) + chr(60) + chr(16) + chr(55) + chr(16) + chr(62) + chr(16) + chr(55) + chr(16) + chr(63) + chr(16) + chr(55) + chr(16) + chr(62) + chr(16) + chr(55) + chr(16) + chr(60) + chr(16) + chr(55) + chr(16) + chr(40) + chr(8) + chr(41) + chr(8) + chr(42) + chr(8) + chr(43) + chr(16)
+		self.connection.send(chr(140) + chr(0) + chr(16) + song)
+		self.connection.send(chr(141) + chr(0))
+
+	@staticmethod
+	def error2radius(error):
+		'''
+		Maps an error from a controller to an appropriate radius for wall following
+		'''
+		if error == 0:
+			return iRobot.STRAIGHT
+		return int(iRobot.bound(-iRobot.STRAIGHT / error + 200, -iRobot.STRAIGHT + 1, iRobot.STRAIGHT))
+
+	@staticmethod
+	def bound(val, min_, max_):
+		'''
+		Bounds a value between a lower and upper bound
+		'''
+		if val < min_:
+			return min_
+		elif val > max_:
+			return max_
+		return val
 
 ################################################## Main Method ##################################################
 
 if __name__ == "__main__":
-	Kp = 0.01 # Arbitrary proprtional gain
-	Kd = 0.30 # Arbitrary derivative gain
-	set_point = 800 # Arbitrary set point                          (straight) to (rotate in place)
+	Kp = 0.3 # Arbitrary proprtional gain
+	Kd = 0.0075 # Arbitrary derivative gain
+	set_point = 420 # Arbitrary set point
 	delay = 0.25
 	error = lambda e_prev_, e_curr_: (Kp * e_curr_) + (Kd * (e_curr_ - e_prev_) / delay)
 	robot = iRobot()
 	robot.start()
 	robot.safe()
-	time.sleep(0.01)
+	time.sleep(0.1)
 	e_prev = set_point - robot.IR_BR # Previous error
 	e_curr = e_prev # Current error
-	e_prev, e_curr = e_curr, set_point - robot.IR_BR
-	e_val = error(e_prev, e_curr)
 	while True:
-		print "		Distance from Wall", robot.IR_BR
-		e_prev, e_curr = e_curr, set_point - robot.IR_BR
-		e_val = error(e_prev, e_curr)
-		try:
-			if e_val < -15:
-				e_val = -15
-			print "Error:", e_val
-			robot.drive(iRobot.MAX_SPEED / 10, e_val)
-		except: # Button pressed
-			continue
-		time.sleep(delay)
-
+		if robot.hour.pressed:
+			break
+		if robot.clean.released:
+			while True:
+				try:
+					e_prev, e_curr = e_curr, set_point - robot.IR_BR
+					e_val = error(e_prev, e_curr)
+					radius = iRobot.error2radius(e_val)
+					print "Error current:", e_curr, "Error previous:", e_prev, "Error:", e_val, "Radius:", radius
+					robot.drive(iRobot.MAX_SPEED / 4.5, radius)
+					if robot.clean.released:
+						break
+					if robot.LT_BFR or (robot.RB and not robot.LB):
+						print "Light bump front right detected"
+						robot.drive(iRobot.MAX_SPEED / 4.5, iRobot.CCW)
+						while robot.LT_BFR or (robot.RB and not robot.LB):
+							continue
+						robot.stop_drive()
+					if (robot.LB and robot.RB) or robot.LT_BCL:
+						print "Center bump detected"
+						robot.drive(iRobot.MAX_SPEED / 4.5, iRobot.CCW)
+						while (robot.LB and robot.RB) or robot.LT_BCL:
+							continue
+						robot.stop_drive()
+					time.sleep(delay)
+				except:
+					break
+	robot.stop_drive()
+	robot.stop()
+	

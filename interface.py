@@ -215,7 +215,15 @@ class iRobot(object):
 				continue
 			data = unpack(self.SENSOR_READ_FORMAT, raw_data)[2:-1] # Unpack without header, n-bytes, and checksum
 			self.parse_data(data) # Parse Data
-
+			global flagStop
+			if self.clean.released:
+				if flagStop == True:
+					flagStop = False
+				else:
+					flagStop = True
+			#print(flagStop)
+		
+		
 	@staticmethod
 	def unwrap(raw_data, v1, v2):
 		'''
@@ -286,7 +294,6 @@ class iRobot(object):
 
 	def decodeLTBS(self, data):
 		'''
-
 		'''
 		self.LT_BR = bool(data & 32)
 		self.LT_BFR = bool(data & 16)
@@ -302,8 +309,8 @@ class iRobot(object):
 		Wrapper for drive commands, required from project 1
 		'''
 		self.connection.send(pack('>B2h', self.DRIVE, int(speed * 1000), radius), delay=delay)
-		if self.clean.pressed:
-			raise self.BUTTON_INTERRUPT
+		#if self.clean.pressed:
+			#raise self.BUTTON_INTERRUPT
 
 	def drive_straight(self, distance, speed=MAX_SPEED / 5.0):
 		'''
@@ -417,6 +424,8 @@ class iRobot(object):
 ################################################## Main Method ##################################################
 
 if __name__ == "__main__":
+	global flagStop
+	flagStop = True
 	Kp = 0.3 # Arbitrary proprtional gain
 	Kd = 0.0075 # Arbitrary derivative gain
 	set_point = 420 # Arbitrary set point
@@ -429,33 +438,36 @@ if __name__ == "__main__":
 	e_prev = set_point - robot.IR_BR # Previous error
 	e_curr = e_prev # Current error
 	while True:
-		if robot.hour.pressed:
-			break
-		if robot.clean.released:
-			while True:
-				try:
-					e_prev, e_curr = e_curr, set_point - robot.IR_BR
-					e_val = error(e_prev, e_curr)
-					radius = iRobot.error2radius(e_val)
-					print "Error current:", e_curr, "Error previous:", e_prev, "Error:", e_val, "Radius:", radius
-					robot.drive(iRobot.MAX_SPEED / 4.5, radius)
-					if robot.clean.released:
+			if robot.hour.pressed:
+				break
+			if robot.clean.released:
+				while True:
+					try:
+						global flagStop
+						if flagStop == True:
+							robot.stop_drive()
+						if flagStop == False:
+							e_prev, e_curr = e_curr, set_point - robot.IR_BR
+							e_val = error(e_prev, e_curr)
+							radius = iRobot.error2radius(e_val)
+							print "Error current:", e_curr, "Error previous:", e_prev, "Error:", e_val, "Radius:", radius
+							robot.drive(iRobot.MAX_SPEED / 4.5, radius)
+							if robot.clean.released:
+								break
+							if robot.LT_BFR or (robot.RB and not robot.LB):
+								print "Light bump front right detected"
+								robot.drive(iRobot.MAX_SPEED / 4.5, iRobot.CCW)
+								while robot.LT_BFR or (robot.RB and not robot.LB):
+									continue
+								robot.stop_drive()
+							if (robot.LB and robot.RB) or robot.LT_BCL:
+								print "Center bump detected"
+								robot.drive(iRobot.MAX_SPEED / 4.5, iRobot.CCW)
+								while (robot.LB and robot.RB) or robot.LT_BCL:
+									continue
+								robot.stop_drive()
+							time.sleep(delay)
+					except:
 						break
-					if robot.LT_BFR or (robot.RB and not robot.LB):
-						print "Light bump front right detected"
-						robot.drive(iRobot.MAX_SPEED / 4.5, iRobot.CCW)
-						while robot.LT_BFR or (robot.RB and not robot.LB):
-							continue
-						robot.stop_drive()
-					if (robot.LB and robot.RB) or robot.LT_BCL:
-						print "Center bump detected"
-						robot.drive(iRobot.MAX_SPEED / 4.5, iRobot.CCW)
-						while (robot.LB and robot.RB) or robot.LT_BCL:
-							continue
-						robot.stop_drive()
-					time.sleep(delay)
-				except:
-					break
 	robot.stop_drive()
 	robot.stop()
-	

@@ -408,7 +408,10 @@ class iRobot(object):
 		'''
 		if error == 0:
 			return iRobot.STRAIGHT
-		return int(iRobot.bound(-iRobot.STRAIGHT / error + 200, -iRobot.STRAIGHT + 1, iRobot.STRAIGHT))
+		elif error < 0:
+			return int(iRobot.bound(-iRobot.STRAIGHT / error + 500, -iRobot.STRAIGHT + 1, iRobot.STRAIGHT))
+		else:
+			return int(iRobot.bound(-iRobot.STRAIGHT / error + 100, -iRobot.STRAIGHT + 1, iRobot.STRAIGHT))
 
 	@staticmethod
 	def bound(val, min_, max_):
@@ -443,9 +446,9 @@ if __name__ == "__main__":
 			if robot.clean.released:
 				while True:
 					try:
-						global flagStop
 						if flagStop == True:
 							robot.stop_drive()
+							break
 						if flagStop == False:
 							e_prev, e_curr = e_curr, set_point - robot.IR_BR
 							e_val = error(e_prev, e_curr)

@@ -91,6 +91,7 @@ class iRobot(object):
 	DRIVE = 137
 	DRIVE_DIRECT = 145
 	READ_SENSORS = 148
+	SEEK_DOCK = 143
   
 	# Packets
 	WHEEL_DROP_AND_BUMPERS = Packet(7, 1, 'BB')
@@ -104,10 +105,10 @@ class iRobot(object):
 	ANGLE = Packet(20, 2, 'Bh')
 	LIGHT_BUMPERS = Packet(45, 1, 'BB')
 	LIGHT_BUMP_RIGHT = Packet(51, 2, 'BH')
-	PACKETS = [BUTTONS,
-						 WHEEL_DROP_AND_BUMPERS,
-						 LIGHT_BUMPERS,
-						 LIGHT_BUMP_RIGHT]
+	IR_LEFT = Packet(52, 1, 'BB')
+	IR_RIGHT = Packet(53, 1, 'BB')
+	IR_OMNI = Packet(17, 1, 'BB')
+	PACKETS = [IR_LEFT, IR_RIGHT, IR_OMNI, BUTTONS, LIGHT_BUMP_RIGHT, WHEEL_DROP_AND_BUMPERS, LIGHT_BUMPERS]
 
 	SENSOR_READ_FORMAT = '>BB'
 	for index in range(len(PACKETS)):
@@ -123,6 +124,15 @@ class iRobot(object):
 	CCW = 1
 	CW = -1
 	BUTTON_INTERRUPT = NameError('Button Pressed')
+
+	# Infrared Characters
+	RED_BUOY = 168
+	GREEN_BUOY = 164
+	FORCE_FIELD = 161
+	G_N_R_BUOY = 172
+	G_N_FF = 165
+	R_N_FF = 169
+	R_N_G_N_FF = 173
 
 	def __init__(self):
 		'''
@@ -159,6 +169,9 @@ class iRobot(object):
 		self.LT_BCL = False # Light bump center left
 		self.LT_BFL = False # Light bump front left
 		self.LT_BL = False # Light bump left
+		self.IR_LEFT_CHAR = 0 # Infrared's left character
+		self.IR_RIGHT_CHAR = 0 # Infrared's right character
+		self.IR_OMNI_CHAR = 0 # Infrared's omni character
 
 	################################################## OI Mode and Starting ##################################################
 
@@ -222,6 +235,7 @@ class iRobot(object):
 				else:
 					flagStop = True
 			#print(flagStop)
+
 		
 		
 	@staticmethod
@@ -266,6 +280,12 @@ class iRobot(object):
 				self.IR_BR = data[i + 1]
 			elif data[i] == self.LIGHT_BUMPERS.id:
 				self.decodeLTBS(data[i + 1])
+			elif data[i] == self.IR_LEFT.id:
+				self.IR_LEFT_CHAR = int(data[i + 1])
+			elif data[i] == self.IR_RIGHT.id:
+				self.IR_RIGHT_CHAR = int(data[i + 1])
+			elif data[i] == self.IR_OMNI.id:
+				self.IR_OMNI_CHAR = int(data[i + 1])
 			else:
 				print "Unknown ID found"
 				break
@@ -301,6 +321,7 @@ class iRobot(object):
 		self.LT_BCL = bool(data & 4)
 		self.LT_BFL = bool(data & 2)
 		self.LT_BL = bool(data & 1)
+
 
 	################################################## Movement ##################################################
 
@@ -441,30 +462,52 @@ if __name__ == "__main__":
 	e_prev = set_point - robot.IR_BR # Previous error
 	e_curr = e_prev # Current error
 	while True:
-			if robot.hour.pressed:
+			if robot.hour.pressed: # Dev full stop
 				break
-			if robot.clean.released:
+			if robot.clean.released: # Start moving once clean is pressed
 				while True:
+					print "Omni:", robot.IR_OMNI_CHAR
+					if robot.IR_OMNI_CHAR == iRobot.GREEN_BUOY:
+						print "  Green Buoy"
+					elif robot.IR_OMNI_CHAR == iRobot.RED_BUOY:
+						print "  Red Buoy"
+					elif robot.IR_OMNI_CHAR == iRobot.FORCE_FIELD:
+						print "  Force Field"
+					elif robot.IR_OMNI_CHAR == iRobot.G_N_R_BUOY:
+						print "  Green and Red Buoy"
+					elif robot.IR_OMNI_CHAR == iRobot.G_N_FF:
+						print "  Green and Force Field"
+					elif robot.IR_OMNI_CHAR == iRobot.R_N_FF:
+						print "  Red and Force Field"
+					elif robot.IR_OMNI_CHAR == iRobot.R_N_G_N_FF:
+						print "  All IR Chars"
+					else:
+						print "  None"
+					print "####################"
+					'''
+					Seek Dock:
+					If only omni char, rotate until left or right char
+					Use left and right chars to direct roomba to dock
+					Once left and right receive green and red, drive straight
+					Once Center bump, stop driving
+					'''
 					try:
-						if flagStop == True:
+						if flagStop == True: # Stop robot when button pressed
 							robot.stop_drive()
 							break
-						if flagStop == False:
-							e_prev, e_curr = e_curr, set_point - robot.IR_BR
-							e_val = error(e_prev, e_curr)
-							radius = iRobot.error2radius(e_val)
-							print "Error current:", e_curr, "Error previous:", e_prev, "Error:", e_val, "Radius:", radius
-							robot.drive(iRobot.MAX_SPEED / 4.5, radius)
+						if flagStop == False: # Wall follow while no button is pressed
+							e_prev, e_curr = e_curr, set_point - robot.IR_BR # Set error
+							e_val = error(e_prev, e_curr) # Find an error value
+							radius = iRobot.error2radius(e_val) # Find a required radius
+							robot.drive(iRobot.MAX_SPEED / 4.5, radius) # Drive while safe
 							if robot.clean.released:
 								break
-							if robot.LT_BFR or (robot.RB and not robot.LB):
-								print "Light bump front right detected"
+							if robot.LT_BFR or (robot.RB and not robot.LB): # If the robot is pointed towards the wall, turn left
 								robot.drive(iRobot.MAX_SPEED / 4.5, iRobot.CCW)
 								while robot.LT_BFR or (robot.RB and not robot.LB):
 									continue
 								robot.stop_drive()
-							if (robot.LB and robot.RB) or robot.LT_BCL:
-								print "Center bump detected"
+							if (robot.LB and robot.RB) or robot.LT_BCL: # If the robot has a center bump or sees a wall infront of it, turn left
 								robot.drive(iRobot.MAX_SPEED / 4.5, iRobot.CCW)
 								while (robot.LB and robot.RB) or robot.LT_BCL:
 									continue

@@ -1,3 +1,4 @@
+import collections
 import serial
 import threading
 import time
@@ -74,6 +75,14 @@ class Button(object):
 		'''
 		self.pressed = False
 		self.released = False
+
+class IR_CHAR(object):
+	def __init__(self):
+		self.hist = collections.deque([0]*4, 4)
+		self.curr = max(self.hist)
+	def update(self, new_state):
+		self.hist.appendleft(new_state)
+		self.curr = max(self.hist)
 
 class iRobot(object):
 	'''
@@ -169,9 +178,9 @@ class iRobot(object):
 		self.LT_BCL = False # Light bump center left
 		self.LT_BFL = False # Light bump front left
 		self.LT_BL = False # Light bump left
-		self.IR_LEFT_CHAR = 0 # Infrared's left character
-		self.IR_RIGHT_CHAR = 0 # Infrared's right character
-		self.IR_OMNI_CHAR = 0 # Infrared's omni character
+		self.IR_LEFT_CHAR = IR_CHAR() # Infrared's left character
+		self.IR_RIGHT_CHAR = IR_CHAR() # Infrared's right character
+		self.IR_OMNI_CHAR = IR_CHAR() # Infrared's omni character
 
 	################################################## OI Mode and Starting ##################################################
 
@@ -281,11 +290,11 @@ class iRobot(object):
 			elif data[i] == self.LIGHT_BUMPERS.id:
 				self.decodeLTBS(data[i + 1])
 			elif data[i] == self.IR_LEFT.id:
-				self.IR_LEFT_CHAR = int(data[i + 1])
+				self.IR_LEFT_CHAR.update(int(data[i + 1]))
 			elif data[i] == self.IR_RIGHT.id:
-				self.IR_RIGHT_CHAR = int(data[i + 1])
+				self.IR_RIGHT_CHAR.update(int(data[i + 1]))
 			elif data[i] == self.IR_OMNI.id:
-				self.IR_OMNI_CHAR = int(data[i + 1])
+				self.IR_OMNI_CHAR.update(int(data[i + 1]))
 			else:
 				print "Unknown ID found"
 				break
@@ -377,7 +386,7 @@ class iRobot(object):
 		Takes a time in seconds and 2 velocities in mm/s
 		These represent the left and right wheel velocities
 		'''
-		self.connection.send(pack('>B2h', self.DRIVE_DIRECT, vl, vr), delay=False) # Send drive direct command
+		self.connection.send(pack('>B2h', self.DRIVE_DIRECT, vl * 1000, vr * 1000), delay=False) # Send drive direct command
 		drive_start_time = time.time() # Keep track of when the iRobot started driving
 		while ((time.time() - drive_start_time < t) and self.safe_to_drive()): # While can drive and hasn't driven for 't' seconds
 			continue
@@ -445,6 +454,53 @@ class iRobot(object):
 			return max_
 		return val
 
+	def seek_dock(self):
+		closeFlag = False
+		while True:
+			if self.IR_OMNI_CHAR.curr == 0 and self.IR_LEFT_CHAR.curr == 0 and self.IR_RIGHT_CHAR.curr == 0:
+				print "Nothing found"
+				continue
+			elif self.IR_LEFT_CHAR.curr == iRobot.G_N_R_BUOY or self.IR_RIGHT_CHAR.curr == iRobot.G_N_R_BUOY:
+				print "Drive Straight"
+				self.drive(iRobot.MAX_SPEED / 10, iRobot.STRAIGHT)
+				while not (self.LB or self.RB):
+					continue
+				self.stop_drive()
+				if (self.LB and self.RB):
+					break
+				elif (self.RB and not self.LB):
+					self.drive_direct(0.2, -iRobot.MAX_SPEED / 10, -iRobot.MAX_SPEED / 10)
+					self.turn(-5)
+					self.drive(iRobot.MAX_SPEED / 10, iRobot.STRAIGHT)
+					while not (self.LB or self.RB):
+						continue
+				else:
+					self.drive_direct(0.1, -iRobot.MAX_SPEED / 10, -iRobot.MAX_SPEED / 10)
+					self.turn(7)
+					self.drive(iRobot.MAX_SPEED / 10, iRobot.STRAIGHT)
+					while not (self.LB or self.RB):
+						continue
+				closeFlag = True
+				break
+			elif self.IR_OMNI_CHAR.curr == iRobot.FORCE_FIELD and self.IR_LEFT_CHAR.curr == 0 and self.IR_RIGHT_CHAR.curr == 0 and closeFlag == False:
+				print "Making room"
+				self.turn(15)
+				self.drive_straight(0.43)
+				self.turn(-80)
+				time.sleep(0.5)
+				self.stop_drive()
+				closeFlag = True
+			'''
+			elif (self.IR_OMNI_CHAR.curr == iRobot.RED_BUOY or self.IR_OMNI_CHAR.curr == self.R_N_FF) and self.IR_LEFT_CHAR.curr == 0:
+				print "Centering"
+				self.drive_direct(1.5, 0, iRobot.MAX_SPEED / 5)
+				self.stop_drive()
+			else:
+				self.turn(-15)
+			'''
+			
+			
+
 ################################################## Main Method ##################################################
 
 if __name__ == "__main__":
@@ -466,24 +522,6 @@ if __name__ == "__main__":
 				break
 			if robot.clean.released: # Start moving once clean is pressed
 				while True:
-					print "Omni:", robot.IR_OMNI_CHAR
-					if robot.IR_OMNI_CHAR == iRobot.GREEN_BUOY:
-						print "  Green Buoy"
-					elif robot.IR_OMNI_CHAR == iRobot.RED_BUOY:
-						print "  Red Buoy"
-					elif robot.IR_OMNI_CHAR == iRobot.FORCE_FIELD:
-						print "  Force Field"
-					elif robot.IR_OMNI_CHAR == iRobot.G_N_R_BUOY:
-						print "  Green and Red Buoy"
-					elif robot.IR_OMNI_CHAR == iRobot.G_N_FF:
-						print "  Green and Force Field"
-					elif robot.IR_OMNI_CHAR == iRobot.R_N_FF:
-						print "  Red and Force Field"
-					elif robot.IR_OMNI_CHAR == iRobot.R_N_G_N_FF:
-						print "  All IR Chars"
-					else:
-						print "  None"
-					print "####################"
 					'''
 					Seek Dock:
 					If only omni char, rotate until left or right char
@@ -495,7 +533,13 @@ if __name__ == "__main__":
 						if flagStop == True: # Stop robot when button pressed
 							robot.stop_drive()
 							break
+
 						if flagStop == False: # Wall follow while no button is pressed
+							if robot.IR_OMNI_CHAR.curr != 0:
+								robot.seek_dock()
+								# Happy song
+								robot.stop()
+								exit()
 							e_prev, e_curr = e_curr, set_point - robot.IR_BR # Set error
 							e_val = error(e_prev, e_curr) # Find an error value
 							radius = iRobot.error2radius(e_val) # Find a required radius

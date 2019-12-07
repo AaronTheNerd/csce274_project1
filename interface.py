@@ -117,7 +117,8 @@ class iRobot(object):
 	IR_LEFT = Packet(52, 1, 'BB')
 	IR_RIGHT = Packet(53, 1, 'BB')
 	IR_OMNI = Packet(17, 1, 'BB')
-	PACKETS = [IR_LEFT, IR_RIGHT, IR_OMNI, BUTTONS, LIGHT_BUMP_RIGHT, WHEEL_DROP_AND_BUMPERS, LIGHT_BUMPERS]
+	CHARGING = Packet(21, 1, 'BB')
+	PACKETS = [IR_LEFT, IR_RIGHT, IR_OMNI, BUTTONS, LIGHT_BUMP_RIGHT, WHEEL_DROP_AND_BUMPERS, LIGHT_BUMPERS, CHARGING]
 
 	SENSOR_READ_FORMAT = '>BB'
 	for index in range(len(PACKETS)):
@@ -170,6 +171,7 @@ class iRobot(object):
 		self.clean = Button()
 		self.distance = 0
 		self.angle = 0
+		self.charging = 0
 		self.IR_BR = 0 # Infrared right sensor
 		self.IR_BL = 0 # Infrared left sensor
 		self.LT_BR = False # Light bump right
@@ -243,7 +245,7 @@ class iRobot(object):
 					flagStop = False
 				else:
 					flagStop = True
-			#print(flagStop)
+			#print(self.charging)
 
 		
 		
@@ -295,6 +297,8 @@ class iRobot(object):
 				self.IR_RIGHT_CHAR.update(int(data[i + 1]))
 			elif data[i] == self.IR_OMNI.id:
 				self.IR_OMNI_CHAR.update(int(data[i + 1]))
+			elif data[i] == self.CHARGING.id:
+				self.charging = data[i + 1]
 			else:
 				print "Unknown ID found"
 				break
@@ -453,40 +457,102 @@ class iRobot(object):
 		elif val > max_:
 			return max_
 		return val
-
+	def play_song(self):
+		'''
+		Creates and plays a song
+		'''
+		song = chr(59)+chr(16)+chr(55)+chr(16)+chr(60)+chr(16)+chr(55)+chr(16)+chr(62)+chr(16)+chr(55)+chr(16)+chr(63)+chr(16)+chr(55)+chr(16)+chr(62)+chr(16)+chr(55)+chr(16)+chr(60)+chr(16)+chr(55)+chr(16)+chr(40)+chr(8)+chr(41)+chr(8)+chr(42)+chr(8)+chr(43)+chr(16)
+		self.connection.send(chr(140)+chr(0)+chr(16)+song)
+		print("playing song")
+		self.connection.send(chr(141)+chr(0))
 	def seek_dock(self):
 		closeFlag = False
-		while True:
-			if self.IR_OMNI_CHAR.curr == 0 and self.IR_LEFT_CHAR.curr == 0 and self.IR_RIGHT_CHAR.curr == 0:
-				print "Nothing found"
+		onDock = False
+		numOfAtmp = 0
+		while (self.charging != 2):
+			print("still running")
+			#print(self.charging)
+			if onDock == False and self.IR_OMNI_CHAR.curr == 0 and self.IR_LEFT_CHAR.curr == 0 and self.IR_RIGHT_CHAR.curr == 0:
+				#print "Nothing found"
 				continue
+			elif onDock == True and self.IR_OMNI_CHAR.curr == 0 and self.IR_LEFT_CHAR.curr == 0 and self.IR_RIGHT_CHAR.curr == 0 and numOfAtmp < 3:
+				print("Literally on the dock")
+				self.drive(-iRobot.MAX_SPEED/10, iRobot.STRAIGHT)
+				self.turn(5)
+				time.sleep(0.75)
+				self.turn(-5)
+				time.sleep(0.75)
+				numOfAtmp += 1
+			elif onDock == True and self.IR_OMNI_CHAR.curr == 0 and self.IR_LEFT_CHAR.curr == 0 and self.IR_RIGHT_CHAR.curr == 0 and numOfAtmp >= 3:
+				print("3 attempts without success")
+				self.drive(-iRobot.MAX_SPEED/10, iRobot.STRAIGHT)
+				time.sleep(0.75)
+				numOfAtmp = 0
+				onDock = False
 			elif self.IR_LEFT_CHAR.curr == iRobot.G_N_R_BUOY or self.IR_RIGHT_CHAR.curr == iRobot.G_N_R_BUOY:
 				print "Drive Straight"
 				self.drive(iRobot.MAX_SPEED / 10, iRobot.STRAIGHT)
 				while not (self.LB or self.RB):
 					continue
 				self.stop_drive()
-				if (self.LB and self.RB):
+				if (self.LB and self.RB and self.charging != 0):
+					print("woah")
 					break
-				elif (self.RB and not self.LB):
-					self.drive_direct(0.2, -iRobot.MAX_SPEED / 10, -iRobot.MAX_SPEED / 10)
+				elif (self.LB and self.RB and self.charging == 0):
+					print("center hit")
+					onDock = True
+					#self.drive_straight
+					#self.drive_direct(0.5, -iRobot.MAX_SPEED/10, -iRobot.MAX_SPEED/10)
 					self.turn(-5)
-					self.drive(iRobot.MAX_SPEED / 10, iRobot.STRAIGHT)
+					self.drive(-iRobot.MAX_SPEED/10, iRobot.STRAIGHT)
+					#self.drive(-iRobot.MAX_SPEED / 10, 0.6*iRobot.STRAIGHT)
+					while not (self.LB or self.RB):
+						continue
+				elif (self.RB and not self.LB):
+					print("right hit")
+					onDock = True
+					#self.drive_straight
+					#self.drive_direct(0.5, -iRobot.MAX_SPEED/10, -iRobot.MAX_SPEED/10)
+					self.turn(-5)
+					self.drive(-iRobot.MAX_SPEED/10, iRobot.STRAIGHT)
+					time.sleep(.25)
+					self.turn(-5)
+					#self.drive_direct(1, 0, -iRobot.MAX_SPEED/10)
+					while not (self.LB or self.RB):
+						continue
+				elif onDock == True and self.IR_OMNI_CHAR.curr == 0 and self.IR_LEFT_CHAR.curr == 0 and self.IR_RIGHT_CHAR.curr == 0:
+					print("Literally on the dock")
+					self.turn(5)
+					time.sleep(0.75)
+					self.turn(-5)
+					time.sleep(0.75)
+					continue
+				elif (self.LB and not self.RB):
+					print("left hit")
+					onDock = True
+					#self.drive_straight
+					#self.drive_direct(0.5, -iRobot.MAX_SPEED/10, -iRobot.MAX_SPEED/10)
+					self.turn(5)
+					self.drive(-iRobot.MAX_SPEED/10, iRobot.STRAIGHT)
+					self.turn(5)
+					#self.drive_direct(1, 0, -iRobot.MAX_SPEED/10)
 					while not (self.LB or self.RB):
 						continue
 				else:
-					self.drive_direct(0.1, -iRobot.MAX_SPEED / 10, -iRobot.MAX_SPEED / 10)
-					self.turn(7)
+					self.drive_direct(0.5, -iRobot.MAX_SPEED / 10, -iRobot.MAX_SPEED / 10)
+					#self.turn(7)
 					self.drive(iRobot.MAX_SPEED / 10, iRobot.STRAIGHT)
 					while not (self.LB or self.RB):
 						continue
 				closeFlag = True
-				break
+				#break
 			elif self.IR_OMNI_CHAR.curr == iRobot.FORCE_FIELD and self.IR_LEFT_CHAR.curr == 0 and self.IR_RIGHT_CHAR.curr == 0 and closeFlag == False:
 				print "Making room"
 				self.turn(15)
-				self.drive_straight(0.43)
-				self.turn(-80)
+				self.drive_straight(0.44)
+				self.turn(-85)
+				time.sleep(0.5)
+				self.turn(-3)
 				time.sleep(0.5)
 				self.stop_drive()
 				closeFlag = True
@@ -498,7 +564,8 @@ class iRobot(object):
 			else:
 				self.turn(-15)
 			'''
-			
+		self.play_song()
+		print("charging detected")
 			
 
 ################################################## Main Method ##################################################
@@ -514,6 +581,7 @@ if __name__ == "__main__":
 	robot = iRobot()
 	robot.start()
 	robot.safe()
+	#robot.full()
 	time.sleep(0.1)
 	e_prev = set_point - robot.IR_BR # Previous error
 	e_curr = e_prev # Current error
@@ -538,6 +606,9 @@ if __name__ == "__main__":
 							if robot.IR_OMNI_CHAR.curr != 0:
 								robot.seek_dock()
 								# Happy song
+								print("yeah boi")
+								robot.play_song()
+								time.sleep(2)
 								robot.stop()
 								exit()
 							e_prev, e_curr = e_curr, set_point - robot.IR_BR # Set error
